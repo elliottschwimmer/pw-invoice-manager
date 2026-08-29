@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Staff — PW Invoice Manager{% endblock %}
+{% block content %}
+  <h2>Project Managers & Administrators</h2>
+
+  <div class="card">
+    <h3>Add Staff Member</h3>
+    <form method="post" action="{{ url_for('add_staff') }}">
+      <div class="field-grid">
+        <div><label>Name</label><input type="text" name="name" required></div>
+        <div><label>Email</label><input type="email" name="email" required></div>
+        <div>
+          <label>Role</label>
+          <select name="role" required>
+            <option value="pm">Project/Program Manager</option>
+            <option value="administrator">Administrator</option>
+          </select>
+        </div>
+        <div><label>Division</label><input type="text" name="division" placeholder="e.g. Transportation" required></div>
+        <div><label>Sub-division</label><input type="text" name="sub_division" placeholder="e.g. Parking Services"></div>
+      </div>
+      <button class="btn" type="submit" style="margin-top:14px;">Add</button>
+    </form>
+  </div>
+
+  <div class="card" style="padding:0;">
+    <table>
+      <thead><tr><th>Name</th><th>Role</th><th>Division</th><th>Sub-division</th><th>Email</th></tr></thead>
+      <tbody>
+        {% for s in staff %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td>{{ "Project Manager" if s.role == "pm" else "Administrator" }}</td>
+          <td>{{ s.division or "—" }}</td>
+          <td>{{ s.sub_division or "—" }}</td>
+          <td>{{ s.email }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted" style="padding:24px;">No staff added yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

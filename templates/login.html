@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In — PW Invoice Manager</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: #f7f7f5; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh;
+    }
+    .card {
+      background: white; border: 1px solid #e0ded9; border-radius: 8px; padding: 32px;
+      width: 320px; box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    }
+    h1 { font-size: 18px; margin: 0 0 20px; text-align: center; }
+    input {
+      width: 100%; padding: 10px; border: 1px solid #e0ded9; border-radius: 6px; font-size: 14px;
+      box-sizing: border-box; margin-bottom: 14px;
+    }
+    button {
+      width: 100%; background: #c8102e; color: white; border: none; padding: 10px;
+      border-radius: 6px; font-size: 14px; cursor: pointer;
+    }
+    button:hover { background: #a80d26; }
+    .error { color: #a11; font-size: 13px; margin-bottom: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Public Works Invoice Manager</h1>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post">
+      <input type="hidden" name="next" value="{{ next }}">
+      <input type="password" name="password" placeholder="Password" autofocus required>
+      <button type="submit">Sign In</button>
+    </form>
+  </div>
+</body>
+</html>

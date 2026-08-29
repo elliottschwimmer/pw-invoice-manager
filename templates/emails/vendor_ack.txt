@@ -1,0 +1,12 @@
+Thank you for your invoice.
+
+The City of Berkeley Public Works Department has received the following invoice and it is now being reviewed:
+
+  Vendor:         {{ invoice.vendor.name if invoice.vendor else invoice.vendor_name_raw }}
+  Invoice Number: {{ invoice.invoice_number or "(not detected — under review)" }}
+  Amount:         {{ invoice.amount|money if invoice.amount else "(not detected — under review)" }}
+  PO Number:      {{ invoice.po_number or "(none provided)" }}
+
+No action is needed from you at this time. If there are any questions about this invoice, the assigned project manager or administrator will follow up directly.
+
+This is an automated message from the Public Works Invoice Manager.

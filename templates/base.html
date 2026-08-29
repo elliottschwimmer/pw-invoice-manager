@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PW Invoice Manager{% endblock %}</title>
+  <style>
+    :root {
+      --berkeley-red: #c8102e;
+      --berkeley-black: #1a1a1a;
+      --berkeley-gold: #f0c05a;
+      --bg: #f7f7f5;
+      --card-bg: #ffffff;
+      --border: #e0ded9;
+      --text: #222;
+      --muted: #6b6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+    }
+    header {
+      background: var(--berkeley-black);
+      color: white;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header img { height: 40px; }
+    header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+    header nav { margin-left: auto; display: flex; gap: 20px; }
+    header nav a { color: white; text-decoration: none; font-size: 14px; opacity: 0.85; }
+    header nav a:hover { opacity: 1; text-decoration: underline; }
+    main { max-width: 1100px; margin: 24px auto; padding: 0 24px; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+    tr:hover td { background: #fafaf8; }
+    a.row-link { color: var(--berkeley-black); text-decoration: none; font-weight: 600; }
+    a.row-link:hover { color: var(--berkeley-red); }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 12px;
+      font-size: 12px; font-weight: 600;
+    }
+    .badge-received { background: #eee; color: #555; }
+    .badge-needs_assignment { background: #fde3e3; color: #a11; }
+    .badge-pending_pm_approval { background: #fff3d6; color: #96700a; }
+    .badge-approved { background: #e0f0ff; color: #145a9c; }
+    .badge-entered_in_munis { background: #e3f6e3; color: #1c7a1c; }
+    .btn {
+      display: inline-block; background: var(--berkeley-red); color: white;
+      border: none; padding: 8px 16px; border-radius: 6px; font-size: 14px;
+      cursor: pointer; text-decoration: none;
+    }
+    .btn:hover { background: #a80d26; }
+    .btn-secondary { background: #eee; color: var(--text); }
+    .btn-secondary:hover { background: #ddd; }
+    .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .filters a {
+      padding: 6px 14px; border-radius: 16px; border: 1px solid var(--border);
+      color: var(--text); text-decoration: none; font-size: 13px;
+    }
+    .filters a.active { background: var(--berkeley-black); color: white; border-color: var(--berkeley-black); }
+    .due-overdue { color: var(--berkeley-red); font-weight: 700; }
+    .due-soon { color: #96700a; font-weight: 600; }
+    .flash { background: #e3f6e3; border: 1px solid #b6e0b6; padding: 10px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+    label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 4px; margin-top: 12px; }
+    input, select, textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
+    }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    h2 { font-size: 20px; margin-top: 0; }
+    h3 { font-size: 15px; margin-top: 0; }
+
+    /* Account-search typeahead (chart of accounts) */
+    .account-cell { position: relative; }
+    .account-desc { font-size: 11px; color: var(--muted); margin-top: 2px; min-height: 14px; }
+    .account-suggestions {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 20;
+      background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12); max-height: 260px; overflow-y: auto;
+      display: none;
+    }
+    .account-suggestions.open { display: block; }
+    .account-suggestion {
+      padding: 8px 10px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--border);
+    }
+    .account-suggestion:last-child { border-bottom: none; }
+    .account-suggestion:hover, .account-suggestion.active { background: #fdf1e9; }
+    .account-suggestion .acct { font-weight: 600; font-family: ui-monospace, monospace; font-size: 12px; }
+    .account-suggestion .desc { color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="{{ url_for('static', filename='img/berkeley-logo.png') }}" alt="City of Berkeley" onerror="this.style.display='none'">
+    <h1>Public Works Invoice Manager</h1>
+    <nav>
+      <a href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('vendors_list') }}">Vendors</a>
+      <a href="{{ url_for('purchase_orders') }}">Purchase Orders</a>
+      <a href="{{ url_for('staff_list') }}">Staff</a>
+      <a href="{{ url_for('outbox') }}">Outbox</a>
+      {% if config.get('APP_PASSWORD') %}
+      <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+        <button type="submit" style="background:none; border:none; color:white; opacity:0.85; cursor:pointer; font-size:14px; padding:0;">Sign Out</button>
+      </form>
+      {% endif %}
+    </nav>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    // Chart-of-accounts typeahead: any <input class="account-input"> gets a
+    // live search dropdown against /api/accounts/search. Selecting a result
+    // fills the input with the full account string and shows its
+    // description underneath (in the following .account-desc element, if
+    // present as a sibling).
+    (function () {
+      let activeBox = null;
+      let debounceTimer = null;
+
+      function closeBox() {
+        if (activeBox) { activeBox.remove(); activeBox = null; }
+      }
+
+      function showResults(input, results) {
+        closeBox();
+        const box = document.createElement('div');
+        box.className = 'account-suggestions open';
+        results.forEach(function (r) {
+          const item = document.createElement('div');
+          item.className = 'account-suggestion';
+
+          const acctEl = document.createElement('div');
+          acctEl.className = 'acct';
+          acctEl.textContent = r.account;
+
+          const descEl2 = document.createElement('div');
+          descEl2.className = 'desc';
+          descEl2.textContent = r.context || r.description || '';
+
+          item.appendChild(acctEl);
+          item.appendChild(descEl2);
+
+          item.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            input.value = r.account;
+            const descEl = input.parentElement.querySelector('.account-desc');
+            if (descEl) descEl.textContent = r.context || r.description || '';
+            closeBox();
+          });
+          box.appendChild(item);
+        });
+        if (!results.length) {
+          const empty = document.createElement('div');
+          empty.className = 'account-suggestion muted';
+          empty.textContent = 'No matching accounts';
+          box.appendChild(empty);
+        }
+        input.parentElement.appendChild(box);
+        activeBox = box;
+      }
+
+      document.addEventListener('input', function (e) {
+        if (!e.target.matches('.account-input')) return;
+        const input = e.target;
+        const q = input.value.trim();
+        clearTimeout(debounceTimer);
+        if (q.length < 2) { closeBox(); return; }
+        debounceTimer = setTimeout(function () {
+          fetch('/api/accounts/search?q=' + encodeURIComponent(q))
+            .then(function (r) { return r.json(); })
+            .then(function (results) { showResults(input, results); })
+            .catch(function () { closeBox(); });
+        }, 200);
+      });
+
+      document.addEventListener('focusout', function (e) {
+        if (!e.target.matches('.account-input')) return;
+        setTimeout(closeBox, 150);
+      });
+    })();
+  </script>
+</body>
+</html>

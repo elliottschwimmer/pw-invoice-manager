@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Vendors — PW Invoice Manager{% endblock %}
+{% block content %}
+  <h2>Vendors</h2>
+  <div class="card" style="padding:0;">
+    <table>
+      <thead><tr><th>Vendor</th><th>Invoices</th><th>Open</th><th>Total Amount</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><a class="row-link" href="{{ url_for('vendor_detail', vendor_id=r.vendor.id) }}">{{ r.vendor.name }}</a></td>
+          <td>{{ r.invoice_count }}</td>
+          <td>{{ r.open_count }}</td>
+          <td>{{ r.total_amount|money }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="muted" style="padding:24px;">No vendors yet — vendors are created automatically as invoices come in.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

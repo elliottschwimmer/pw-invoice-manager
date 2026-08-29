@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ invoice.invoice_number }} — PW Invoice Manager{% endblock %}
+{% block content %}
+  <a href="{{ url_for('dashboard') }}" class="muted">&larr; Back to dashboard</a>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+    <h2>{{ invoice.vendor.name if invoice.vendor else invoice.vendor_name_raw or "Unknown Vendor" }}</h2>
+    <span class="badge badge-{{ invoice.status }}">{{ invoice.status_label }}</span>
+  </div>
+  {% if invoice.split_from_invoice_id %}
+    <p class="muted">📄 Split from the same PDF as <a class="row-link" href="{{ url_for('invoice_detail', invoice_id=invoice.split_from_invoice_id) }}">invoice #{{ invoice.split_from_invoice_id }}</a> — multiple invoices were detected in one upload.</p>
+  {% endif %}
+
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+    <div class="card">
+      <h3>Invoice Details</h3>
+      <div class="field-grid">
+        <div><span class="muted">Invoice #</span><div>{{ invoice.invoice_number or "—" }}</div></div>
+        <div><span class="muted">Amount</span><div>{{ invoice.amount|money }}</div></div>
+        <div><span class="muted">PO #</span><div>{{ invoice.po_number or "—" }}{% if invoice.purchase_order %} <a class="row-link" href="{{ url_for('edit_po', po_id=invoice.purchase_order.id) }}" style="font-size:12px;">(view)</a>{% endif %}</div></div>
+        <div><span class="muted">Sender</span><div>{{ invoice.sender_email or "—" }} {% if invoice.sender_domain_verified %}✓ verified{% endif %}</div></div>
+        <div><span class="muted">Received</span><div>{{ invoice.received_at|pacific }}</div></div>
+        <div><span class="muted">Due Date</span><div>{{ invoice.due_date.strftime("%m/%d/%Y") if invoice.due_date else "not set" }}</div></div>
+      </div>
+
+      <form method="post" action="{{ url_for('update_vendor', invoice_id=invoice.id) }}" style="margin-top:12px;">
+        <label>Vendor — wrong or missing? Correct it here</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" name="vendor_name" list="vendor-options" value="{{ invoice.vendor.name if invoice.vendor else invoice.vendor_name_raw or '' }}" placeholder="Vendor name">
+          <button class="btn btn-secondary" type="submit">Save</button>
+        </div>
+        <datalist id="vendor-options">
+          {% for v in vendors %}<option value="{{ v.name }}">{% endfor %}
+        </datalist>
+      </form>
+
+      <form method="post" action="{{ url_for('set_due_date', invoice_id=invoice.id) }}" style="margin-top:12px;">
+        <label>Set / update due date</label>
+        <div style="display:flex; gap:8px;">
+          <input type="date" name="due_date" value="{{ invoice.due_date.isoformat() if invoice.due_date else '' }}">
+          <button class="btn btn-secondary" type="submit">Save</button>
+        </div>
+      </form>
+
+      <h3 style="margin-top:20px;">Preview</h3>
+      <iframe src="{{ url_for('invoice_pdf', invoice_id=invoice.id) }}" style="width:100%; height:400px; border:1px solid var(--border); border-radius:6px;"></iframe>
+    </div>
+
+    <div>
+      <div class="card">
+        <h3>Assignment</h3>
+        {% if invoice.pm and invoice.administrator %}
+          <p>PM: <strong>{{ invoice.pm.name }}</strong> ({{ invoice.pm.email }})</p>
+          <p>Administrator: <strong>{{ invoice.administrator.name }}</strong> ({{ invoice.administrator.email }})</p>
+          <form method="post" action="{{ url_for('remind', invoice_id=invoice.id) }}">
+            <button class="btn btn-secondary" type="submit">Send reminder to PM</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('assign', invoice_id=invoice.id) }}">
+            <label>Project Manager</label>
+            <select name="pm_id" required>
+              {% for s in staff if s.role == "pm" %}<option value="{{ s.id }}">{{ s.name }} — {{ s.team_label }}</option>{% endfor %}
+            </select>
+            <label>Administrator</label>
+            <select name="administrator_id" required>
+              {% for s in staff if s.role == "administrator" %}<option value="{{ s.id }}">{{ s.name }} — {{ s.team_label }}</option>{% endfor %}
+            </select>
+            <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
+              <input type="checkbox" name="remember" checked style="width:auto;"> Remember this assignment for future invoices from this vendor
+            </label>
+            <button class="btn" type="submit" style="margin-top:14px;">Assign</button>
+          </form>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <h3>Budget Coding {% if invoice.purchase_order %}<span class="muted">(from PO {{ invoice.purchase_order.po_number }})</span>{% endif %}</h3>
+        {% if invoice.purchase_order %}<p class="muted">Pre-filled from the matching PO — correct any line below before approving.</p>{% else %}<p class="muted">No PO number was found on this invoice — enter the budget coding below, or link it to an existing PO:</p>
+
+        <form method="post" action="{{ url_for('link_po', invoice_id=invoice.id) }}" style="margin-bottom:16px;">
+          <div style="display:flex; gap:8px;">
+            <select name="purchase_order_id" required>
+              <option value="">Choose an existing PO...</option>
+              {% for po in purchase_orders_list %}<option value="{{ po.id }}">{{ po.po_number }}{% if po.vendor %} — {{ po.vendor.name }}{% endif %}</option>{% endfor %}
+            </select>
+            <button class="btn btn-secondary" type="submit">Link PO</button>
+          </div>
+        </form>
+        {% endif %}
+
+        {% if invoice.coding_lines and invoice.coding_matches_total is not none %}
+          {% if invoice.coding_matches_total %}
+            <p style="color:#1c7a1c; font-size:13px;">✓ Coded lines total {{ invoice.coding_total|money }}, matching the invoice amount.</p>
+          {% else %}
+            <p style="color:#a11; font-weight:600; font-size:13px;">⚠ Coded lines total {{ invoice.coding_total|money }} but the invoice amount is {{ invoice.amount|money }} — these don't match. Correct the allocation before approving.</p>
+          {% endif %}
+        {% endif %}
+
+        <form method="post" action="{{ url_for('update_coding_lines', invoice_id=invoice.id) }}">
+          <p class="muted" style="margin-top:0;">Start typing an account code or description to search the chart of accounts. Line # should match the PO's own line numbering.</p>
+          <table>
+            <thead><tr><th style="width:8%;">Line #</th><th style="width:30%;">Account String</th><th>Description</th><th style="width:16%;">Amount</th></tr></thead>
+            <tbody>
+              {% for line in invoice.coding_lines %}
+              <tr>
+                <td><input type="number" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
+                <td class="account-cell">
+                  <input type="text" class="account-input" name="account_{{ loop.index0 }}" value="{{ line.account_string }}" autocomplete="off">
+                  <div class="account-desc"></div>
+                </td>
+                <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}"></td>
+                <td><input type="number" step="0.01" name="amount_{{ loop.index0 }}" value="{{ line.amount }}"></td>
+              </tr>
+              {% endfor %}
+              {% for i in range(3) %}
+              <tr>
+                <td><input type="number" name="line_number_{{ invoice.coding_lines|length + i }}" value="{{ invoice.coding_lines|length + i + 1 }}"></td>
+                <td class="account-cell">
+                  <input type="text" class="account-input" name="account_{{ invoice.coding_lines|length + i }}" autocomplete="off">
+                  <div class="account-desc"></div>
+                </td>
+                <td><input type="text" name="description_{{ invoice.coding_lines|length + i }}"></td>
+                <td><input type="number" step="0.01" name="amount_{{ invoice.coding_lines|length + i }}"></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <button class="btn btn-secondary" type="submit" style="margin-top:14px;">Save budget coding</button>
+        </form>
+
+        {% if invoice.status == "pending_pm_approval" %}
+          <form method="post" action="{{ url_for('approve', invoice_id=invoice.id) }}" style="margin-top:14px; border-top: 1px solid var(--border); padding-top: 14px;">
+            {% if invoice.coding_matches_total is false %}
+              <p style="color:#a11; font-size:13px;">⚠ Budget lines don't add up to the invoice amount — you can still approve, but double check the coding first.</p>
+            {% endif %}
+            <label>Approval note (optional)</label>
+            <textarea name="note" rows="2"></textarea>
+            <button class="btn" type="submit" style="margin-top:10px;">Approve invoice</button>
+          </form>
+        {% endif %}
+      </div>
+
+      {% if invoice.pm_approved_at %}
+      <div class="card">
+        <h3>Final PDF for Munis</h3>
+        <p class="muted">Two versions — try both and use whichever your Administrator prefers.</p>
+        <div style="margin-bottom:12px;">
+          <strong>Cover page</strong> — a separate coding/approval page in front of the invoice. Handles any number of budget lines cleanly, never overlaps the invoice content.
+          <div><a class="btn" href="{{ url_for('invoice_final_pdf', invoice_id=invoice.id) }}" target="_blank" style="margin-top:6px;">View / download</a></div>
+        </div>
+        <div>
+          <strong>Stamped on invoice</strong> — coding/approval text written directly onto the bottom margin of the invoice, like the current hand-written process. Best for invoices with few budget lines and enough margin.
+          <div><a class="btn btn-secondary" href="{{ url_for('invoice_stamped_pdf', invoice_id=invoice.id) }}" target="_blank" style="margin-top:6px;">View / download</a></div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if invoice.status == "approved" %}
+      <div class="card">
+        <h3>Munis Entry</h3>
+        <form method="post" action="{{ url_for('mark_entered', invoice_id=invoice.id) }}">
+          <label>Entered by</label>
+          <input type="text" name="entered_by" placeholder="Your name">
+          <button class="btn" type="submit" style="margin-top:10px;">Mark entered in Munis</button>
+        </form>
+      </div>
+      {% endif %}
+
+      <div class="card">
+        <h3>Activity</h3>
+        {% for e in invoice.events %}
+          <div style="font-size:13px; margin-bottom:8px;">
+            <span class="muted">{{ e.created_at|pacific("%m/%d %I:%M %p") }}</span> — {{ e.detail }}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

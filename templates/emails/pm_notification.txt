@@ -1,0 +1,20 @@
+{% if is_reminder %}REMINDER — this invoice is still awaiting your approval.
+{% endif %}
+An invoice has been assigned to you for review and budget coding.
+
+  Vendor:         {{ invoice.vendor.name if invoice.vendor else invoice.vendor_name_raw }}
+  Invoice Number: {{ invoice.invoice_number or "(not detected)" }}
+  Amount:         {{ invoice.amount|money if invoice.amount else "(not detected)" }}
+  PO Number:      {{ invoice.po_number or "(none detected)" }}
+  Due Date:       {{ invoice.due_date.strftime("%m/%d/%Y") if invoice.due_date else "(not set)" }}
+
+{% if invoice.purchase_order %}
+Budget coding pre-filled from PO {{ invoice.purchase_order.po_number }} on file — review and correct it in the app before approving.
+{% else %}
+No PO on file matching this invoice — enter the budget coding in the app.
+{% endif %}
+
+Review, correct the coding if needed, and approve here:
+  {{ dashboard_url|default("[dashboard link]") }}
+
+This is an automated message from the Public Works Invoice Manager.

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — PW Invoice Manager{% endblock %}
+{% block content %}
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h2>Invoices</h2>
+    <div style="display:flex; gap:10px;">
+      <a class="btn" href="{{ url_for('upload_invoice') }}">Upload Invoice</a>
+      <form method="post" action="{{ url_for('check_mail') }}">
+        <button class="btn btn-secondary" type="submit">Check for new invoices</button>
+      </form>
+    </div>
+  </div>
+
+  {% if pos_needing_fy_review %}
+  <div class="card" style="border-color:#e0a020; background:#fffaf0;">
+    <h3>Fiscal Year Review Needed — {{ current_fiscal_year_label() }}</h3>
+    <p class="muted">{{ pos_needing_fy_review|length }} fiscal-year PO(s) haven't been reviewed since the fiscal year rolled over on 7/1:</p>
+    {% for po in pos_needing_fy_review %}
+      <p><a class="row-link" href="{{ url_for('edit_po', po_id=po.id) }}">PO {{ po.po_number }}</a> — last reviewed for {{ po.fiscal_year_label or "an earlier year" }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="filters">
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if not active_status }}">All ({{ counts['all'] }})</a>
+    <a href="{{ url_for('dashboard', status='needs_assignment') }}" class="{{ 'active' if active_status=='needs_assignment' }}">Needs Assignment ({{ counts['needs_assignment'] }})</a>
+    <a href="{{ url_for('dashboard', status='pending_pm_approval') }}" class="{{ 'active' if active_status=='pending_pm_approval' }}">Pending PM Approval ({{ counts['pending_pm_approval'] }})</a>
+    <a href="{{ url_for('dashboard', status='approved') }}" class="{{ 'active' if active_status=='approved' }}">Approved ({{ counts['approved'] }})</a>
+    <a href="{{ url_for('dashboard', status='entered_in_munis') }}" class="{{ 'active' if active_status=='entered_in_munis' }}">Entered in Munis ({{ counts['entered_in_munis'] }})</a>
+  </div>
+
+  <div class="filters">
+    <a href="{{ url_for('dashboard', status=active_status) }}" class="{{ 'active' if not active_urgency }}">All Due Dates</a>
+    <a href="{{ url_for('dashboard', status=active_status, urgency='overdue') }}" class="{{ 'active' if active_urgency=='overdue' }}" style="{{ 'color:#a11; border-color:#a11;' if urgency_counts['overdue'] }}">⚠ Past Due ({{ urgency_counts['overdue'] }})</a>
+    <a href="{{ url_for('dashboard', status=active_status, urgency='due_soon') }}" class="{{ 'active' if active_urgency=='due_soon' }}" style="{{ 'color:#96700a; border-color:#96700a;' if urgency_counts['due_soon'] }}">Due Within 7 Days ({{ urgency_counts['due_soon'] }})</a>
+    <a href="{{ url_for('dashboard', status=active_status, urgency='due_later') }}" class="{{ 'active' if active_urgency=='due_later' }}">Due Later ({{ urgency_counts['due_later'] }})</a>
+    <a href="{{ url_for('dashboard', status=active_status, urgency='no_date') }}" class="{{ 'active' if active_urgency=='no_date' }}">No Due Date ({{ urgency_counts['no_date'] }})</a>
+  </div>
+
+  <div class="card" style="padding:0;">
+    <table>
+      <thead>
+        <tr>
+          <th>Received</th><th>Vendor</th><th>Invoice #</th><th>Amount</th><th>PO #</th>
+          <th>PM</th><th>Administrator</th><th>Due</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td>{{ inv.received_at|pacific("%m/%d/%Y") }}</td>
+          <td><a class="row-link" href="{{ url_for('invoice_detail', invoice_id=inv.id) }}">{{ inv.vendor.name if inv.vendor else inv.vendor_name_raw or "Unknown" }}</a></td>
+          <td>{{ inv.invoice_number or "—" }}</td>
+          <td>{{ inv.amount|money }}</td>
+          <td>{{ inv.po_number or "—" }}</td>
+          <td>{{ inv.pm.name if inv.pm else "—" }}</td>
+          <td>{{ inv.administrator.name if inv.administrator else "—" }}</td>
+          <td class="{{ 'due-overdue' if inv.urgency=='overdue' else 'due-soon' if inv.urgency=='due_soon' else '' }}">
+            {{ inv.due_date.strftime("%m/%d/%Y") if inv.due_date else "—" }}
+            {% if inv.urgency == 'overdue' %}⚠{% endif %}
+          </td>
+          <td><span class="badge badge-{{ inv.status }}">{{ inv.status_label }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="muted" style="padding:24px;">No invoices match this filter.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

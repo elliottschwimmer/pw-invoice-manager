@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ vendor.name }} — PW Invoice Manager{% endblock %}
+{% block content %}
+  <a href="{{ url_for('vendors_list') }}" class="muted">&larr; Back to vendors</a>
+  <h2>{{ vendor.name }}</h2>
+  <div class="card" style="padding:0;">
+    <table>
+      <thead>
+        <tr>
+          <th>Received</th><th>Invoice #</th><th>Amount</th><th>PO #</th>
+          <th>PM</th><th>Administrator</th><th>Due</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td>{{ inv.received_at|pacific("%m/%d/%Y") }}</td>
+          <td><a class="row-link" href="{{ url_for('invoice_detail', invoice_id=inv.id) }}">{{ inv.invoice_number or "—" }}</a></td>
+          <td>{{ inv.amount|money }}</td>
+          <td>{{ inv.po_number or "—" }}</td>
+          <td>{{ inv.pm.name if inv.pm else "—" }}</td>
+          <td>{{ inv.administrator.name if inv.administrator else "—" }}</td>
+          <td class="{{ 'due-overdue' if inv.urgency=='overdue' else 'due-soon' if inv.urgency=='due_soon' else '' }}">{{ inv.due_date.strftime("%m/%d/%Y") if inv.due_date else "—" }}</td>
+          <td><span class="badge badge-{{ inv.status }}">{{ inv.status_label }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="muted" style="padding:24px;">No invoices from this vendor yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

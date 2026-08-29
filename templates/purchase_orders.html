@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Purchase Orders — PW Invoice Manager{% endblock %}
+{% block content %}
+  <h2>Purchase Orders</h2>
+
+  <div class="card">
+    <h3>Add a PO</h3>
+    <p class="muted">POs don't list the full 8-segment budget string, so there's nothing to auto-extract — enter the PO number here, then code its budget lines by hand on the next page using the chart-of-accounts search. Every invoice matched to this PO # will pre-fill from what you enter.</p>
+    <form method="post" action="{{ url_for('create_po') }}">
+      <div class="field-grid">
+        <div><label>PO Number</label><input type="text" name="po_number" required></div>
+        <div><label>Contract Number (optional)</label><input type="text" name="contract_number"></div>
+      </div>
+      <label>PO Type</label>
+      <select name="fiscal_year_scope">
+        <option value="one_time">One-time PO</option>
+        <option value="fiscal_year">Fiscal-year allocation (currently {{ current_fiscal_year_label() }}) — will be flagged for review each new fiscal year</option>
+      </select>
+      <label>Entered by</label>
+      <input type="text" name="uploaded_by" placeholder="Your name">
+      <button class="btn" type="submit" style="margin-top:14px;">Create PO</button>
+    </form>
+  </div>
+
+  <div class="card" style="padding:0;">
+    <table>
+      <thead><tr><th>PO #</th><th>Vendor</th><th>Contract #</th><th>Type</th><th>Budget Lines</th><th>Created</th></tr></thead>
+      <tbody>
+        {% for po in pos %}
+        <tr>
+          <td><a class="row-link" href="{{ url_for('edit_po', po_id=po.id) }}">{{ po.po_number }}</a></td>
+          <td>{{ po.vendor.name if po.vendor else "—" }}</td>
+          <td>{{ po.contract_number or "—" }}</td>
+          <td>
+            {% if po.fiscal_year_scope == "fiscal_year" %}
+              {{ po.fiscal_year_label }}
+              {% if po_needs_fy_review(po) %}<span class="badge badge-needs_assignment">Needs FY review</span>{% endif %}
+            {% else %}
+              One-time
+            {% endif %}
+          </td>
+          <td>{{ po.budget_lines|length }}</td>
+          <td>{{ po.uploaded_at|pacific("%m/%d/%Y") }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted" style="padding:24px;">No POs added yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

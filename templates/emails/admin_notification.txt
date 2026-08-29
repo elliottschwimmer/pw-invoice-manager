@@ -1,0 +1,19 @@
+This invoice has been approved by {{ invoice.pm.name if invoice.pm else "the project manager" }} and is ready to enter into Munis.
+
+  Vendor:         {{ invoice.vendor.name if invoice.vendor else invoice.vendor_name_raw }}
+  Invoice Number: {{ invoice.invoice_number or "(not detected)" }}
+  Amount:         {{ invoice.amount|money if invoice.amount else "(not detected)" }}
+  PO Number:      {{ invoice.po_number or "(none detected)" }}
+
+Budget coding:
+{% for line in invoice.coding_lines %}
+  {{ line.account_string }} — {{ line.description or "" }} — {{ line.amount|money }}
+{% endfor %}
+
+{% if invoice.pm_approval_note %}
+PM note: {{ invoice.pm_approval_note }}
+{% endif %}
+
+The attached PDF has the coding/approval summary above followed by the original invoice — ready to upload to Munis. Once entered, mark it complete on the dashboard: {{ dashboard_url|default("[dashboard link]") }}
+
+This is an automated message from the Public Works Invoice Manager.

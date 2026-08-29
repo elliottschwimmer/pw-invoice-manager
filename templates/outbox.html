@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Outbox — PW Invoice Manager{% endblock %}
+{% block content %}
+  <h2>Outbox</h2>
+  <p class="muted">In mock mode, emails aren't actually sent — they land here instead so you can review exactly what would go out once the real mailbox is connected.</p>
+
+  {% for e in emails %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between;">
+      <div>
+        <strong>To:</strong> {{ e.to_email }}<br>
+        <strong>Subject:</strong> {{ e.subject }}
+      </div>
+      <div class="muted">{{ e.sent_at|pacific }}</div>
+    </div>
+    {% if e.invoice_id %}
+      <p><a class="row-link" href="{{ url_for('invoice_detail', invoice_id=e.invoice_id) }}">View related invoice &rarr;</a></p>
+    {% endif %}
+    {% if e.attachment_filename %}
+      <p>📎 <a class="row-link" href="{{ url_for('outbox_attachment', email_id=e.id) }}" target="_blank">{{ e.attachment_filename }}</a></p>
+    {% endif %}
+    <pre style="white-space: pre-wrap; font-family: inherit; font-size: 13px; background: #fafaf8; border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-top: 10px;">{{ e.body }}</pre>
+  </div>
+  {% else %}
+  <div class="card muted">No emails sent yet.</div>
+  {% endfor %}
+{% endblock %}
