@@ -359,3 +359,31 @@ def split_invoices(pdf_bytes: bytes):
             "text": "\n".join(pages_text[idx] for idx in group["page_indices"]),
         })
     return results
+
+
+# Rows like "Landscaping - Civic Center Park ... $3,000.00" — a description
+# followed by a trailing dollar amount, generic enough to catch most vendor
+# line-item tables. Used to power the PO-line coding suggestions.
+_LINE_ITEM_RE = re.compile(r"^(.{4,80}?)\s+\$?\s*([\d,]+\.\d{2})\s*$")
+_LINE_ITEM_SKIP_RE = re.compile(
+    r"^(total|subtotal|balance|amount due|tax|sales tax|shipping|freight|"
+    r"payments?|credits?|invoice|page\s*\d|bill\s*to|remit\s*to|ship\s*to)",
+    re.IGNORECASE,
+)
+
+
+def parse_invoice_line_items(text: str) -> list[dict]:
+    """Best-effort extraction of the invoice's own itemized lines (not the
+    PO's), used to suggest which PO budget line each item probably belongs
+    to. Skips obvious non-item rows (totals, tax, shipping, headers)."""
+    items = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or _LINE_ITEM_SKIP_RE.match(line):
+            continue
+        m = _LINE_ITEM_RE.match(line)
+        if not m:
+            continue
+        description, amount = m.groups()
+        items.append({"description": description.strip(), "amount": _to_decimal(amount)})
+    return items

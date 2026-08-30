@@ -18,6 +18,7 @@ from intake import (
 )
 from pdf_export import generate_final_pdf, generate_stamped_pdf
 from timezone_utils import format_pacific
+from coding_suggest import suggest_coding_lines
 from fiscal_year_utils import current_fiscal_year_label, po_needs_fiscal_year_review
 
 
@@ -229,6 +230,17 @@ def register_routes(app):
         if due_date_str:
             invoice.due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
             db.session.commit()
+        return redirect(url_for("invoice_detail", invoice_id=invoice_id))
+
+    @app.route("/invoices/<int:invoice_id>/suggest-coding", methods=["POST"])
+    def suggest_coding(invoice_id):
+        invoice = Invoice.query.get_or_404(invoice_id)
+        suggestions = suggest_coding_lines(invoice)
+        if not suggestions:
+            flash("No confident PO-line matches found — code this one manually.")
+            return redirect(url_for("invoice_detail", invoice_id=invoice_id))
+        _apply_coding_lines(invoice, suggestions)
+        flash(f"Suggested {len(suggestions)} budget line(s) from the PO — review before approving.")
         return redirect(url_for("invoice_detail", invoice_id=invoice_id))
 
     @app.route("/invoices/<int:invoice_id>/coding-lines", methods=["POST"])

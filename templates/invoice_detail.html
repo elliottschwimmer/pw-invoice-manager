@@ -74,7 +74,12 @@
 
       <div class="card">
         <h3>Budget Coding {% if invoice.purchase_order %}<span class="muted">(from PO {{ invoice.purchase_order.po_number }})</span>{% endif %}</h3>
-        {% if invoice.purchase_order %}<p class="muted">Pre-filled from the matching PO — correct any line below before approving.</p>{% else %}<p class="muted">No PO number was found on this invoice — enter the budget coding below, or link it to an existing PO:</p>
+        {% if invoice.purchase_order %}
+          <p class="muted">Pre-filled from the matching PO — correct any line below before approving.</p>
+          <form method="post" action="{{ url_for('suggest_coding', invoice_id=invoice.id) }}" style="margin-bottom:14px;">
+            <button class="btn btn-secondary" type="submit">✨ Suggest lines from PO (based on invoice items &amp; remaining budget)</button>
+          </form>
+        {% else %}<p class="muted">No PO number was found on this invoice — enter the budget coding below, or link it to an existing PO:</p>
 
         <form method="post" action="{{ url_for('link_po', invoice_id=invoice.id) }}" style="margin-bottom:16px;">
           <div style="display:flex; gap:8px;">
