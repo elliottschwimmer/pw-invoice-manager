@@ -60,8 +60,9 @@ def _build_stamp_overlay(invoice, page_width: float, page_height: float) -> byte
     coding_lines_bottom_up = []
     for coding_line in reversed(invoice.coding_lines):
         desc = f" — {coding_line.description}" if coding_line.description else ""
+        account = coding_line.account_string or "(not yet coded)"
         coding_lines_bottom_up.append(
-            f"  Line {coding_line.line_number or ''}: {coding_line.account_string}{desc} — {_money(coding_line.amount)}"
+            f"  Line {coding_line.line_number or ''}: {account}{desc} — {_money(coding_line.amount)}"
         )
     if invoice.coding_lines:
         coding_lines_bottom_up.append(f"Budget Coding (Total {_money(invoice.coding_total)}):")
@@ -157,7 +158,7 @@ def _build_cover_page(invoice) -> bytes:
             y = height - margin
             c.setFont("Helvetica", 9)
         c.drawString(margin, y, str(coding_line.line_number or ""))
-        c.drawString(margin + 0.4 * inch, y, coding_line.account_string)
+        c.drawString(margin + 0.4 * inch, y, coding_line.account_string or "(not yet coded)")
         desc = (coding_line.description or "")[:50]
         c.drawString(margin + 3.1 * inch, y, desc)
         amt = float(coding_line.amount or 0)
