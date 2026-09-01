@@ -64,6 +64,12 @@ def suggest_coding_lines(invoice: Invoice) -> list[dict]:
 
     remaining = {pl.id: remaining_budget(pl, exclude_invoice_id=invoice.id) for pl in po_lines}
     items = parse_invoice_line_items(invoice.extracted_text or "")
+    # Some invoice layouts print the item's description on a separate line
+    # from its quantity/price/amount row (the PDF text extracts them
+    # separately), leaving nothing but numbers in the "description" here —
+    # there's no words to match against a PO line, so treat it the same as
+    # not having found an item at all rather than silently dropping it.
+    items = [item for item in items if _words(item["description"])]
 
     if not items:
         # No itemized breakdown found — fall back to suggesting a single

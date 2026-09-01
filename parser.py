@@ -57,17 +57,26 @@ _PO_NUM_RE = re.compile(
     r"(?:P\.?O\.?|purchase[ \t]*order)[ \t]*(?!box)(?:#|no\.?|number)?[ \t]*[:#]?[ \t]*(\d{8})",
     re.IGNORECASE,
 )
-_AMOUNT_RE = re.compile(
-    # \b before the label so "total" doesn't match inside "Subtotal" and
-    # grab a subtotal instead of the real total.
-    r"\b(?:total[ \t]*(?:due|amount)?|amount[ \t]*due|balance[ \t]*due|net[ \t]*amount)\b"
-    # Up to 40 non-digit characters between the label and the number —
-    # covers "Total USD________________10,861.34" (a currency code plus a
-    # run of underscores used as a remittance-slip fill line), not just a
-    # bare "$" or colon.
-    r"[^\d\n]{0,40}([\d,]+\.\d{2})",
-    re.IGNORECASE,
-)
+# Tried in priority order — "amount due"/"balance due" are the most
+# unambiguous label for what's actually owed, so they're checked before the
+# generic "total" patterns. This matters because a document can have
+# multiple "total"-labeled lines before the real one (e.g. "Total sales tax
+# 0.00" ahead of "Total 5,822.92" / "Amount due $5,822.92") — searching for
+# the bare word "total" alone can grab the wrong line entirely. Each pattern
+# allows up to 40 non-digit characters between the label and the number —
+# covers "Total USD________________10,861.34" (a currency code plus a run
+# of underscores used as a remittance-slip fill line), not just a bare "$"
+# or colon.
+_AMOUNT_LABEL_PATTERNS = [
+    re.compile(r"\bamount[ \t]*due\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
+    re.compile(r"\bbalance[ \t]*due\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
+    re.compile(r"\b(?:grand[ \t]*total|total[ \t]*due|invoice[ \t]*total)\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
+    # \b before "total" so it doesn't match inside "Subtotal"; the
+    # lookahead skips lines like "Total sales tax" / "Total tax" so a tax
+    # line never gets mistaken for the real total.
+    re.compile(r"\btotal\b(?![^\d\n]{0,20}\btax\b)[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
+    re.compile(r"\bnet[ \t]*amount\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
+]
 _FALLBACK_AMOUNT_RE = re.compile(r"\$[ \t]*([\d,]+\.\d{2})")
 # Shared date-value pattern: either numeric (08/20/2026) or written-out
 # (August 20, 2026).
@@ -172,15 +181,21 @@ def parse_invoice_fields(text: str) -> dict:
     if fields["due_date"] is None:
         fields["due_date"] = _extract_due_date_from_column(lines)
 
-    m = _AMOUNT_RE.search(text)
-    if not m:
-        # fall back to the largest dollar figure on the page — usually the total
+    for pattern in _AMOUNT_LABEL_PATTERNS:
+        matches = pattern.findall(text)
+        if matches:
+            # Last match wins — a document can repeat the same label (e.g.
+            # a running total per page) and the final one is the one that
+            # actually reflects what's owed.
+            fields["amount"] = _to_decimal(matches[-1])
+            break
+    else:
+        # No labeled amount found at all — fall back to the largest dollar
+        # figure on the page, usually the total.
         amounts = _FALLBACK_AMOUNT_RE.findall(text)
         if amounts:
             m_val = max(amounts, key=lambda a: _to_decimal(a))
             fields["amount"] = _to_decimal(m_val)
-    else:
-        fields["amount"] = _to_decimal(m.group(1))
 
     # Vendor name guess: prefer an explicit "From:" line (strongest signal),
     # else fall back to the first non-empty line that isn't a generic
