@@ -22,12 +22,47 @@
   {% endif %}
 
   <div class="card">
+    <h3>PO Details</h3>
+    <div class="field-grid">
+      <div><span class="muted">Description</span><div>{{ po.description or "—" }}</div></div>
+      <div><span class="muted">Contract #</span><div>{{ po.contract_number or "—" }}</div></div>
+      {% if po.munis_liquidated_total is not none %}
+      <div><span class="muted">Liquidated (Munis)</span><div>{{ po.munis_liquidated_total|money }}</div></div>
+      <div><span class="muted">Open Amount (Munis)</span><div>{{ po.munis_open_amount|money }}</div></div>
+      {% endif %}
+      {% if po.munis_imported_at %}
+      <div><span class="muted">Last Munis Import</span><div>{{ po.munis_imported_at|pacific }}</div></div>
+      {% endif %}
+    </div>
+    <form method="post" action="{{ url_for('update_po_vendor', po_id=po.id) }}" style="margin-top:12px;">
+      <label>Vendor Name</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" name="vendor_name" value="{{ po.vendor.name if po.vendor else (po.vendor_name or '') }}" placeholder="Vendor name">
+        <button class="btn btn-secondary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
     <h3>Budget Lines</h3>
-    <p class="muted">Enter each budget line for this PO, matching the PO's own line numbers (1, 2, 3...). Start typing an account code, fund/division/program name, or object description below to search the chart of accounts.</p>
+    <p class="muted">Enter each budget line's account string, matching the PO's own line numbers (1, 2, 3...). Start typing an account code, fund/division/program name, or object description below to search the chart of accounts.
+      {% if po.munis_imported_at %}Description, unit price, and the Munis liquidated/balance figures came from the Munis import — account strings are yours to code.{% endif %}</p>
     <form method="post" action="{{ url_for('update_po_lines', po_id=po.id) }}">
+      <div style="overflow-x:auto;">
       <table>
-        <thead><tr><th style="width:8%;">Line #</th><th style="width:30%;">Account String</th><th>Description</th><th style="width:16%;">Amount</th></tr></thead>
+        <thead>
+          <tr>
+            <th style="width:6%;">Line #</th>
+            <th style="width:22%;">Account String</th>
+            <th>Description</th>
+            <th style="width:11%;">Amount</th>
+            {% if po.budget_lines|selectattr("unit_price", "ne", none)|list %}<th style="width:10%;">Unit Price</th>{% endif %}
+            {% if po.budget_lines|selectattr("munis_liquidated_amount", "ne", none)|list %}<th style="width:11%;">Liquidated</th><th style="width:11%;">Balance</th>{% endif %}
+          </tr>
+        </thead>
         <tbody>
+          {% set has_unit_price = po.budget_lines|selectattr("unit_price", "ne", none)|list %}
+          {% set has_munis = po.budget_lines|selectattr("munis_liquidated_amount", "ne", none)|list %}
           {% for line in po.budget_lines %}
           <tr>
             <td><input type="number" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
@@ -37,6 +72,11 @@
             </td>
             <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}"></td>
             <td><input type="number" step="0.01" name="amount_{{ loop.index0 }}" value="{{ line.budgeted_amount }}"></td>
+            {% if has_unit_price %}<td class="muted">{{ line.unit_price|money if line.unit_price is not none else "—" }}</td>{% endif %}
+            {% if has_munis %}
+              <td class="muted">{{ line.munis_liquidated_amount|money if line.munis_liquidated_amount is not none else "—" }}</td>
+              <td class="muted">{{ line.munis_balance|money if line.munis_balance is not none else "—" }}</td>
+            {% endif %}
           </tr>
           {% endfor %}
           {% for i in range(5) %}
@@ -48,10 +88,13 @@
             </td>
             <td><input type="text" name="description_{{ po.budget_lines|length + i }}"></td>
             <td><input type="number" step="0.01" name="amount_{{ po.budget_lines|length + i }}"></td>
+            {% if has_unit_price %}<td></td>{% endif %}
+            {% if has_munis %}<td></td><td></td>{% endif %}
           </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
       <button class="btn" type="submit" style="margin-top:14px;">Save budget lines</button>
     </form>
   </div>

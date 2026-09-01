@@ -54,20 +54,28 @@ class VendorAssignment(db.Model):
 
 
 class PurchaseOrder(db.Model):
-    """Uploaded by a PM or Administrator via the dashboard. Its budget lines
-    are remembered and pre-filled onto future invoices for the same PO."""
+    """Created manually or imported from a Tyler Munis PO export. Its
+    budget lines are remembered and pre-filled onto future invoices for
+    the same PO."""
     __tablename__ = "purchase_orders"
 
     id = db.Column(db.Integer, primary_key=True)
     po_number = db.Column(db.String(64), nullable=False, index=True)
     vendor_id = db.Column(db.Integer, db.ForeignKey("vendors.id"))
+    vendor_name = db.Column(db.String(256))  # as printed on the PO — set directly even without a full Vendor match
     contract_number = db.Column(db.String(64))
-    description = db.Column(db.Text)  # raw text pulled from the PO PDF
+    description = db.Column(db.Text)  # the PO's own description, from Munis or entered by hand
     filename = db.Column(db.String(256))
     data = db.Column(db.LargeBinary)
     mimetype = db.Column(db.String(128))
     uploaded_by = db.Column(db.String(128))
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Populated when imported from a Munis PO export — the PO-level totals,
+    # for reference alongside the per-line detail.
+    munis_liquidated_total = db.Column(db.Numeric(12, 2))
+    munis_open_amount = db.Column(db.Numeric(12, 2))
+    munis_imported_at = db.Column(db.DateTime)
 
     # "one_time" POs never need review. "fiscal_year" POs are tied to a
     # specific fiscal year's allocation (City FY runs 7/1-6/30) and should
@@ -94,7 +102,14 @@ class POBudgetLine(db.Model):
     line_number = db.Column(db.Integer)
     account_string = db.Column(db.String(128), nullable=False)
     description = db.Column(db.Text)  # PO line-item text, e.g. "Landscaping - Civic Center Park"
-    budgeted_amount = db.Column(db.Numeric(12, 2))
+    budgeted_amount = db.Column(db.Numeric(12, 2))  # the line's ordered/budgeted amount
+
+    # Reference-only figures from a Munis import — not used in this app's
+    # own remaining-budget math (that's based on what's been coded to
+    # invoices here), just shown alongside it so the two can be compared.
+    unit_price = db.Column(db.Numeric(12, 2))
+    munis_liquidated_amount = db.Column(db.Numeric(12, 2))
+    munis_balance = db.Column(db.Numeric(12, 2))
 
 
 class Invoice(db.Model):

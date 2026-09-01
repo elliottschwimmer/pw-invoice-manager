@@ -3,23 +3,42 @@
 {% block content %}
   <h2>Purchase Orders</h2>
 
-  <div class="card">
-    <h3>Add a PO</h3>
-    <p class="muted">POs don't list the full 8-segment budget string, so there's nothing to auto-extract — enter the PO number here, then code its budget lines by hand on the next page using the chart-of-accounts search. Every invoice matched to this PO # will pre-fill from what you enter.</p>
-    <form method="post" action="{{ url_for('create_po') }}">
-      <div class="field-grid">
-        <div><label>PO Number</label><input type="text" name="po_number" required></div>
-        <div><label>Contract Number (optional)</label><input type="text" name="contract_number"></div>
-      </div>
-      <label>PO Type</label>
-      <select name="fiscal_year_scope">
-        <option value="one_time">One-time PO</option>
-        <option value="fiscal_year">Fiscal-year allocation (currently {{ current_fiscal_year_label() }}) — will be flagged for review each new fiscal year</option>
-      </select>
-      <label>Entered by</label>
-      <input type="text" name="uploaded_by" placeholder="Your name">
-      <button class="btn" type="submit" style="margin-top:14px;">Create PO</button>
-    </form>
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+    <div class="card">
+      <h3>Import from Munis</h3>
+      <p class="muted">Upload a PO export from Tyler Munis (.xlsx) — vendor, description, and each line's description, unit price, liquidated amount, and balance are pulled in automatically. Account strings still need to be coded by hand, since Munis exports don't include them. Re-importing the same PO # refreshes these figures without losing any coding you've already entered.</p>
+      <form method="post" action="{{ url_for('import_munis') }}" enctype="multipart/form-data">
+        <label>Munis PO Export (.xlsx)</label>
+        <input type="file" name="munis_file" accept=".xlsx" required>
+        <label>Imported by</label>
+        <input type="text" name="uploaded_by" placeholder="Your name">
+        <button class="btn" type="submit" style="margin-top:14px;">Import</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Add a PO Manually</h3>
+      <p class="muted">Or enter a PO by hand and code its budget lines yourself using the chart-of-accounts search.</p>
+      <form method="post" action="{{ url_for('create_po') }}">
+        <div class="field-grid">
+          <div><label>PO Number</label><input type="text" name="po_number" required></div>
+          <div><label>Vendor Name</label><input type="text" name="vendor_name"></div>
+        </div>
+        <div class="field-grid">
+          <div><label>Contract Number (optional)</label><input type="text" name="contract_number"></div>
+          <div>
+            <label>PO Type</label>
+            <select name="fiscal_year_scope">
+              <option value="one_time">One-time PO</option>
+              <option value="fiscal_year">Fiscal-year allocation ({{ current_fiscal_year_label() }})</option>
+            </select>
+          </div>
+        </div>
+        <label>Entered by</label>
+        <input type="text" name="uploaded_by" placeholder="Your name">
+        <button class="btn" type="submit" style="margin-top:14px;">Create PO</button>
+      </form>
+    </div>
   </div>
 
   <div class="card" style="padding:0;">
@@ -29,7 +48,7 @@
         {% for po in pos %}
         <tr>
           <td><a class="row-link" href="{{ url_for('edit_po', po_id=po.id) }}">{{ po.po_number }}</a></td>
-          <td>{{ po.vendor.name if po.vendor else "—" }}</td>
+          <td>{{ po.vendor.name if po.vendor else (po.vendor_name or "—") }}</td>
           <td>{{ po.contract_number or "—" }}</td>
           <td>
             {% if po.fiscal_year_scope == "fiscal_year" %}

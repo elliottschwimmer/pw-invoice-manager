@@ -20,6 +20,7 @@ from pdf_export import generate_final_pdf, generate_stamped_pdf
 from timezone_utils import format_pacific
 from coding_suggest import suggest_coding_lines
 from fiscal_year_utils import current_fiscal_year_label, po_needs_fiscal_year_review
+from po_import import import_munis_po
 
 
 def _money(value):
@@ -337,12 +338,14 @@ def register_routes(app):
     @app.route("/purchase-orders/create", methods=["POST"])
     def create_po():
         po_number = request.form["po_number"]
+        vendor_name = request.form.get("vendor_name", "").strip()
         contract_number = request.form.get("contract_number", "")
         uploaded_by = request.form.get("uploaded_by", "")
         fiscal_year_scope = request.form.get("fiscal_year_scope", "one_time")
 
         po = PurchaseOrder(
             po_number=po_number,
+            vendor_name=vendor_name or None,
             contract_number=contract_number,
             uploaded_by=uploaded_by,
             fiscal_year_scope=fiscal_year_scope,
@@ -355,31 +358,69 @@ def register_routes(app):
         flash(f"PO {po_number} created — enter its budget lines below.")
         return redirect(url_for("edit_po", po_id=po.id))
 
+    @app.route("/purchase-orders/import-munis", methods=["POST"])
+    def import_munis():
+        file = request.files.get("munis_file")
+        if not file or not file.filename:
+            flash("Choose a Munis PO export (.xlsx) to import")
+            return redirect(url_for("purchase_orders"))
+        uploaded_by = request.form.get("uploaded_by", "")
+        try:
+            po = import_munis_po(file.read(), uploaded_by)
+        except Exception as e:
+            flash(f"Couldn't import that file: {e}")
+            return redirect(url_for("purchase_orders"))
+        flash(f"Imported PO {po.po_number} from Munis — {len(po.budget_lines)} line(s). Account strings still need to be coded.")
+        return redirect(url_for("edit_po", po_id=po.id))
+
     @app.route("/purchase-orders/<int:po_id>")
     def edit_po(po_id):
         po = PurchaseOrder.query.get_or_404(po_id)
         return render_template("po_detail.html", po=po)
 
+    @app.route("/purchase-orders/<int:po_id>/vendor", methods=["POST"])
+    def update_po_vendor(po_id):
+        po = PurchaseOrder.query.get_or_404(po_id)
+        po.vendor_name = request.form.get("vendor_name", "").strip() or None
+        db.session.commit()
+        flash("Vendor updated")
+        return redirect(url_for("edit_po", po_id=po_id))
+
     @app.route("/purchase-orders/<int:po_id>/lines", methods=["POST"])
     def update_po_lines(po_id):
         po = PurchaseOrder.query.get_or_404(po_id)
-        # Simple full-replace from the form
-        POBudgetLine.query.filter_by(purchase_order_id=po.id).delete()
+        existing_by_number = {bl.line_number: bl for bl in po.budget_lines}
+        submitted_numbers = set()
+
         i = 0
         while f"account_{i}" in request.form:
             account = request.form[f"account_{i}"].strip()
             if account:
-                line_no = request.form.get(f"line_number_{i}") or (i + 1)
-                db.session.add(
-                    POBudgetLine(
-                        purchase_order_id=po.id,
-                        line_number=int(line_no),
-                        account_string=account,
-                        description=request.form.get(f"description_{i}", ""),
-                        budgeted_amount=request.form.get(f"amount_{i}") or 0,
+                line_no = int(request.form.get(f"line_number_{i}") or (i + 1))
+                submitted_numbers.add(line_no)
+                existing = existing_by_number.get(line_no)
+                if existing:
+                    existing.account_string = account
+                    existing.description = request.form.get(f"description_{i}", "")
+                    existing.budgeted_amount = request.form.get(f"amount_{i}") or 0
+                else:
+                    db.session.add(
+                        POBudgetLine(
+                            purchase_order_id=po.id,
+                            line_number=line_no,
+                            account_string=account,
+                            description=request.form.get(f"description_{i}", ""),
+                            budgeted_amount=request.form.get(f"amount_{i}") or 0,
+                        )
                     )
-                )
             i += 1
+
+        # Remove lines that were deleted from the form (but weren't part of
+        # a Munis import — those should be re-imported, not hand-deleted).
+        for line_no, existing in existing_by_number.items():
+            if line_no not in submitted_numbers:
+                db.session.delete(existing)
+
         db.session.commit()
         flash("Budget lines updated")
         return redirect(url_for("edit_po", po_id=po.id))
