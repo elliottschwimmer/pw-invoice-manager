@@ -373,8 +373,27 @@ def split_invoices(pdf_bytes: bytes):
 # line-item tables. Used to power the PO-line coding suggestions.
 _LINE_ITEM_RE = re.compile(r"^(.{4,80}?)\s+\$?\s*([\d,]+\.\d{2})\s*$")
 _LINE_ITEM_SKIP_RE = re.compile(
-    r"^(total|subtotal|balance|amount due|tax|sales tax|shipping|freight|"
+    r"^(total|subtotal|balance|amount\s*due|net\s*amount|grand\s*total|"
+    r"tax|sales\s*tax|shipping|freight|discount|"
     r"payments?|credits?|invoice|page\s*\d|bill\s*to|remit\s*to|ship\s*to)",
+    re.IGNORECASE,
+)
+# Real PDF text extraction often merges unrelated columns onto one line
+# (e.g. a phone number and "Subtotal USD" end up sharing a line), so these
+# summary/total words are also checked anywhere in the line, not just at
+# the start — a genuine line item essentially never contains them.
+_LINE_ITEM_SKIP_ANYWHERE_RE = re.compile(
+    r"\b(subtotal|sub\s*total|sales\s*tax|balance\s*due|net\s*amount|"
+    r"grand\s*total|amount\s*due)\b",
+    re.IGNORECASE,
+)
+# A merged-column line like "AR@ipsgroupinc.com Total" or "Pay Terms - Net
+# 30 Days Total:" isn't caught by the start-anchored skip list, but its
+# description always ENDS in one of these summary words right before the
+# dollar amount — a real item description essentially never does.
+_LINE_ITEM_DESC_SUFFIX_SKIP_RE = re.compile(
+    r"(total|subtotal|sub\s*total|balance\s*due|net\s*amount|grand\s*total|"
+    r"amount\s*due|sales\s*tax|\btax)\s*:?\s*$",
     re.IGNORECASE,
 )
 
@@ -386,10 +405,12 @@ def parse_invoice_line_items(text: str) -> list[dict]:
     items = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
-        if not line or _LINE_ITEM_SKIP_RE.match(line):
+        if not line or _LINE_ITEM_SKIP_RE.match(line) or _LINE_ITEM_SKIP_ANYWHERE_RE.search(line):
             continue
         m = _LINE_ITEM_RE.match(line)
         if not m:
+            continue
+        if _LINE_ITEM_DESC_SUFFIX_SKIP_RE.search(m.group(1)):
             continue
         description, amount = m.groups()
         items.append({"description": description.strip(), "amount": _to_decimal(amount)})

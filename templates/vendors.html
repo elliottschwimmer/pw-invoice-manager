@@ -7,7 +7,7 @@
       <thead><tr><th>Vendor</th><th>Invoices</th><th>Open</th><th>Total Amount</th></tr></thead>
       <tbody>
         {% for r in rows %}
-        <tr>
+        <tr class="clickable-row" data-href="{{ url_for('vendor_detail', vendor_id=r.vendor.id) }}">
           <td><a class="row-link" href="{{ url_for('vendor_detail', vendor_id=r.vendor.id) }}">{{ r.vendor.name }}</a></td>
           <td>{{ r.invoice_count }}</td>
           <td>{{ r.open_count }}</td>

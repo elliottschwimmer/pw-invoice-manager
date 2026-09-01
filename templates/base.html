@@ -47,6 +47,7 @@
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
     th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
     tr:hover td { background: #fafaf8; }
+    tr.clickable-row { cursor: pointer; }
     a.row-link { color: var(--berkeley-black); text-decoration: none; font-weight: 600; }
     a.row-link:hover { color: var(--berkeley-red); }
     .badge {
@@ -215,6 +216,16 @@
         setTimeout(closeBox, 150);
       });
     })();
+
+    // Whole-row navigation: any <tr class="clickable-row" data-href="..."> ->
+    // clicking anywhere in the row navigates there, except when the click
+    // landed on an actual link/button (so those keep their own behavior).
+    document.addEventListener('click', function (e) {
+      const row = e.target.closest('tr.clickable-row');
+      if (!row) return;
+      if (e.target.closest('a, button, input, select, textarea')) return;
+      window.location.href = row.dataset.href;
+    });
 
     // Currency inputs: show comma-formatted ("1,560.14") once loaded and
     // whenever the field loses focus; a plain unformatted number (no

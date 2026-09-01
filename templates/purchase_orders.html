@@ -46,7 +46,7 @@
       <thead><tr><th>PO #</th><th>Vendor</th><th>Contract #</th><th>Type</th><th>Budget Lines</th><th>Created</th></tr></thead>
       <tbody>
         {% for po in pos %}
-        <tr>
+        <tr class="clickable-row" data-href="{{ url_for('edit_po', po_id=po.id) }}">
           <td><a class="row-link" href="{{ url_for('edit_po', po_id=po.id) }}">{{ po.po_number }}</a></td>
           <td>{{ po.vendor.name if po.vendor else (po.vendor_name or "—") }}</td>
           <td>{{ po.contract_number or "—" }}</td>

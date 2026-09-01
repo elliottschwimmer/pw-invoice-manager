@@ -47,7 +47,7 @@
       </thead>
       <tbody>
         {% for inv in invoices %}
-        <tr>
+        <tr class="clickable-row" data-href="{{ url_for('invoice_detail', invoice_id=inv.id) }}">
           <td>{{ inv.received_at|pacific("%m/%d/%Y") }}</td>
           <td><a class="row-link" href="{{ url_for('invoice_detail', invoice_id=inv.id) }}">{{ inv.vendor.name if inv.vendor else inv.vendor_name_raw or "Unknown" }}</a></td>
           <td>{{ inv.invoice_number or "—" }}</td>
