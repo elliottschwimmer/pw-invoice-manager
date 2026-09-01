@@ -184,6 +184,9 @@
             const descEl = input.parentElement.querySelector('.account-desc');
             if (descEl) descEl.textContent = r.context || r.description || '';
             closeBox();
+            // Setting .value via JS doesn't fire a native 'change' event —
+            // dispatch one so auto-save (below) picks up the selection.
+            input.dispatchEvent(new Event('change', { bubbles: true }));
           });
           box.appendChild(item);
         });
@@ -214,6 +217,20 @@
       document.addEventListener('focusout', function (e) {
         if (!e.target.matches('.account-input')) return;
         setTimeout(closeBox, 150);
+      });
+    })();
+
+    // Auto-save: any <form class="auto-save-form"> submits itself as soon
+    // as a field inside it changes (on blur) — no manual "Save" button.
+    // Debounced slightly so selecting from the account-search dropdown
+    // (which also fires 'change') doesn't trigger two rapid saves.
+    (function () {
+      let saveTimer = null;
+      document.addEventListener('change', function (e) {
+        const form = e.target.closest('form.auto-save-form');
+        if (!form) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(function () { form.requestSubmit(); }, 150);
       });
     })();
 

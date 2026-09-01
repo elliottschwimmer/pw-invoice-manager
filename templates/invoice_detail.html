@@ -108,8 +108,8 @@
           {% endif %}
         {% endif %}
 
-        <form method="post" action="{{ url_for('update_coding_lines', invoice_id=invoice.id) }}">
-          <p class="muted" style="margin-top:0;">Start typing an account code or description to search the chart of accounts. Line # should match the PO's own line numbering.</p>
+        <form method="post" action="{{ url_for('update_coding_lines', invoice_id=invoice.id) }}" class="auto-save-form">
+          <p class="muted" style="margin-top:0;">Start typing an account code or description to search the chart of accounts. Line # should match the PO's own line numbering. Changes save automatically when you click away from a field.</p>
           <table>
             <thead><tr><th style="width:8%;">Line #</th><th style="width:30%;">Account String</th><th>Description</th><th style="width:16%;">Amount</th></tr></thead>
             <tbody>
@@ -137,7 +137,6 @@
               {% endfor %}
             </tbody>
           </table>
-          <button class="btn btn-secondary" type="submit" style="margin-top:14px;">Save budget coding</button>
         </form>
 
         {% if invoice.status == "pending_pm_approval" %}

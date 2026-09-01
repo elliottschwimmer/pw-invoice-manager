@@ -439,6 +439,9 @@ def register_routes(app):
                             budgeted_amount=amount_raw or 0,
                         )
                     )
+                # One insert/update at a time — avoids a SQLAlchemy/psycopg2
+                # batched-insert mismatch seen with multiple new rows at once.
+                db.session.flush()
             i += 1
 
         # Remove lines that were deleted from the form (but weren't part of

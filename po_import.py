@@ -67,6 +67,7 @@ def import_munis_po(file_bytes: bytes, uploaded_by: str = "") -> PurchaseOrder:
                 munis_liquidated_amount=line["munis_liquidated_amount"],
                 munis_balance=line["munis_balance"],
             ))
+        db.session.flush()  # one insert at a time — see intake.update_coding_lines
 
     db.session.commit()
     return po

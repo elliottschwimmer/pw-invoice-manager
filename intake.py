@@ -85,6 +85,7 @@ def update_coding_lines(invoice: Invoice, lines: list[dict]):
     entered directly in the dashboard. `lines` is a list of dicts with
     line_number, account_string, description, amount."""
     InvoiceCodingLine.query.filter_by(invoice_id=invoice.id).delete()
+    db.session.flush()
     for line in lines:
         db.session.add(
             InvoiceCodingLine(
@@ -96,6 +97,11 @@ def update_coding_lines(invoice: Invoice, lines: list[dict]):
                 source="pm_edit",
             )
         )
+        # One insert at a time rather than one batched multi-row statement —
+        # sidesteps a SQLAlchemy/psycopg2 "insertmanyvalues" mismatch seen
+        # in production where a later row's amount landed in an earlier
+        # row's line_number column, corrupting the whole batch insert.
+        db.session.flush()
     _log_event(invoice, "coding_updated", f"Budget coding updated in the dashboard ({len(lines)} line(s))")
     db.session.commit()
 
@@ -191,6 +197,7 @@ def _apply_po_to_invoice(invoice: Invoice, po: PurchaseOrder, log=True):
     invoice.purchase_order = po
     invoice.po_number = po.po_number
     InvoiceCodingLine.query.filter_by(invoice_id=invoice.id).delete()
+    db.session.flush()
     for line in po.budget_lines:
         db.session.add(
             InvoiceCodingLine(
@@ -202,6 +209,7 @@ def _apply_po_to_invoice(invoice: Invoice, po: PurchaseOrder, log=True):
                 source="po",
             )
         )
+        db.session.flush()  # one insert at a time — see update_coding_lines
     if log:
         _log_event(invoice, "po_linked", f"Linked to PO {po.po_number} — {len(po.budget_lines)} budget line(s) copied in")
         db.session.commit()
