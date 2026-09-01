@@ -113,25 +113,97 @@
         <form method="post" action="{{ url_for('update_coding_lines', invoice_id=invoice.id) }}" class="auto-save-form">
           <p class="muted" style="margin-top:0;">Line # should match the PO's own line numbering. Changes save automatically when you click away from a field.</p>
           <table>
-            <thead><tr><th style="width:10%;">Line #</th><th>Description</th><th style="width:20%;">Amount</th></tr></thead>
+            <thead><tr>
+              <th style="width:10%;">Line #</th><th>Description</th><th style="width:16%;">Amount</th>
+              {% if invoice.purchase_order %}<th style="width:24%;">Budget Remaining</th>{% endif %}
+            </tr></thead>
             <tbody>
               {% for line in invoice.coding_lines %}
-              <tr>
+              <tr class="coding-row">
                 <td><input type="number" class="line-input" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
                 <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}"></td>
                 <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ loop.index0 }}" value="{{ line.amount }}"></td>
+                {% if invoice.purchase_order %}
+                <td class="budget-progress-cell">
+                  <div class="budget-progress-bar"><div class="budget-progress-fill"></div></div>
+                  <div class="budget-progress-text muted"></div>
+                </td>
+                {% endif %}
               </tr>
               {% endfor %}
               {% for i in range(3) %}
-              <tr>
+              <tr class="coding-row">
                 <td><input type="number" class="line-input" name="line_number_{{ invoice.coding_lines|length + i }}" value="{{ invoice.coding_lines|length + i + 1 }}"></td>
                 <td><input type="text" name="description_{{ invoice.coding_lines|length + i }}"></td>
                 <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ invoice.coding_lines|length + i }}"></td>
+                {% if invoice.purchase_order %}
+                <td class="budget-progress-cell">
+                  <div class="budget-progress-bar"><div class="budget-progress-fill"></div></div>
+                  <div class="budget-progress-text muted"></div>
+                </td>
+                {% endif %}
               </tr>
               {% endfor %}
             </tbody>
           </table>
         </form>
+
+        {% if invoice.purchase_order %}
+        <script type="application/json" id="budget-progress-data">{{ budget_progress|tojson }}</script>
+        <script>
+          (function () {
+            const dataEl = document.getElementById('budget-progress-data');
+            if (!dataEl) return;
+            let budgetProgress = {};
+            try { budgetProgress = JSON.parse(dataEl.textContent); } catch (e) { return; }
+
+            function parseAmount(v) {
+              const n = parseFloat(String(v || '').replace(/,/g, ''));
+              return isNaN(n) ? 0 : n;
+            }
+            function money(n) {
+              return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+
+            function updateRow(row) {
+              const cell = row.querySelector('.budget-progress-cell');
+              if (!cell) return;
+              const lineInput = row.querySelector('input.line-input');
+              const amountInput = row.querySelector('input.currency-input');
+              const fill = cell.querySelector('.budget-progress-fill');
+              const text = cell.querySelector('.budget-progress-text');
+              const lineNumber = lineInput ? parseInt(lineInput.value, 10) : NaN;
+              const progress = isNaN(lineNumber) ? null : budgetProgress[lineNumber];
+              if (!progress) {
+                cell.style.visibility = 'hidden';
+                return;
+              }
+              cell.style.visibility = 'visible';
+              const amount = amountInput ? parseAmount(amountInput.value) : 0;
+              const budgeted = progress.budgeted;
+              const before = progress.remaining_before;
+              const after = before - amount;
+              const usedPct = budgeted > 0 ? Math.max(0, Math.min(100, ((budgeted - after) / budgeted) * 100)) : 0;
+              fill.style.width = usedPct + '%';
+              fill.classList.toggle('over-budget', after < 0);
+              text.textContent = money(before) + ' → ' + money(after) + ' remaining';
+            }
+
+            function updateAllRows() {
+              document.querySelectorAll('tr.coding-row').forEach(updateRow);
+            }
+
+            document.addEventListener('input', function (e) {
+              const row = e.target.closest('tr.coding-row');
+              if (row && (e.target.matches('input.line-input') || e.target.matches('input.currency-input'))) {
+                updateRow(row);
+              }
+            });
+
+            updateAllRows();
+          })();
+        </script>
+        {% endif %}
 
         {% if invoice.status == "pending_pm_approval" %}
           <form method="post" action="{{ url_for('approve', invoice_id=invoice.id) }}" style="margin-top:14px; border-top: 1px solid var(--border); padding-top: 14px;">

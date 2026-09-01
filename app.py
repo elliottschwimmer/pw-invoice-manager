@@ -18,7 +18,7 @@ from intake import (
 )
 from pdf_export import generate_final_pdf, generate_stamped_pdf
 from timezone_utils import format_pacific
-from coding_suggest import suggest_coding_lines
+from coding_suggest import suggest_coding_lines, remaining_budget
 from fiscal_year_utils import current_fiscal_year_label, po_needs_fiscal_year_review
 from po_import import import_munis_po
 
@@ -139,9 +139,24 @@ def register_routes(app):
         staff = Staff.query.order_by(Staff.name).all()
         vendors = Vendor.query.order_by(Vendor.name).all()
         purchase_orders_list = PurchaseOrder.query.order_by(PurchaseOrder.po_number).all()
+
+        # Per-PO-line remaining budget, excluding whatever this invoice has
+        # already coded to it — used to show a before/after progress bar
+        # next to each budget-coding row as the PM enters an amount.
+        budget_progress = {}
+        if invoice.purchase_order:
+            for pl in invoice.purchase_order.budget_lines:
+                budgeted = float(pl.budgeted_amount or 0)
+                remaining_before = float(remaining_budget(pl, exclude_invoice_id=invoice.id))
+                budget_progress[pl.line_number] = {
+                    "budgeted": budgeted,
+                    "remaining_before": remaining_before,
+                }
+
         return render_template(
             "invoice_detail.html", invoice=invoice, staff=staff, vendors=vendors,
             purchase_orders_list=purchase_orders_list, today=date.today(),
+            budget_progress=budget_progress,
         )
 
     @app.route("/invoices/<int:invoice_id>/link-po", methods=["POST"])
