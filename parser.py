@@ -78,12 +78,18 @@ _AMOUNT_LABEL_PATTERNS = [
     re.compile(r"\bnet[ \t]*amount\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
 ]
 _FALLBACK_AMOUNT_RE = re.compile(r"\$[ \t]*([\d,]+\.\d{2})")
-# Shared date-value pattern: either numeric (08/20/2026) or written-out
-# (August 20, 2026).
+# Full month names checked before their abbreviations so "September" always
+# matches whole rather than stopping short at "Sep".
+_MONTH_NAMES_RE_FRAGMENT = (
+    r"(?:January|February|March|April|May|June|July|August|September|October|"
+    r"November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?"
+)
+# Shared date-value pattern: either numeric (08/20/2026) or written-out,
+# full ("August 20, 2026") or abbreviated ("Aug 20, 2026" — common on
+# Stripe-generated invoices).
 _DATE_VALUE = (
     r"(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}|"
-    r"(?:January|February|March|April|May|June|July|August|September|October|"
-    r"November|December)\s+\d{1,2},?\s+\d{4})"
+    + _MONTH_NAMES_RE_FRAGMENT + r"\s+\d{1,2},?\s+\d{4})"
 )
 _DUE_DATE_RE = re.compile(
     r"(?:due[ \t]*date|payment[ \t]*due|net[ \t]*due|due[ \t]*by)[ \t]*[:\-]?[ \t]*" + _DATE_VALUE,
@@ -103,8 +109,7 @@ _DATE_TOKEN_RE = re.compile(r"^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$")
 # Written-out dates like "July 2, 2026" — some invoices (e.g. LAZ Parking)
 # use this instead of mm/dd/yyyy.
 _MONTH_DATE_RE = re.compile(
-    r"\b(January|February|March|April|May|June|July|August|September|October|"
-    r"November|December)\s+\d{1,2},?\s+\d{4}\b",
+    r"\b" + _MONTH_NAMES_RE_FRAGMENT + r"\s+\d{1,2},?\s+\d{4}\b",
     re.IGNORECASE,
 )
 # A table-style invoice with a "Due Date" column but no inline label next to
@@ -180,6 +185,9 @@ def parse_invoice_fields(text: str) -> dict:
 
     if fields["due_date"] is None:
         fields["due_date"] = _extract_due_date_from_column(lines)
+
+    if fields["invoice_number"] is None:
+        fields["invoice_number"] = _extract_invoice_number_from_stripe_summary(lines)
 
     for pattern in _AMOUNT_LABEL_PATTERNS:
         matches = pattern.findall(text)
@@ -259,6 +267,43 @@ def _extract_invoice_date_from_table(lines: list[str]):
                 if _DATE_TOKEN_RE.match(token):
                     return _to_date(token)
             break
+    return None
+
+
+# Stripe-generated invoices print a summary row of labels — "Amount due
+# Due date Issue date Invoice number Reference" — whose values then wrap
+# across two physical lines below it (the PDF text extraction splits them
+# by visual line, not by logical row):
+#     Amount due Due date Issue date Invoice number Reference
+#     $5,822.92 Oct 1, 2026
+#     Sep 1, 2026 INV-0265 Contract #32400187
+# Join everything up to the next blank line (or "View online") and pull the
+# invoice number out positionally: it's the token right after the 2nd date
+# (Issue date), before the Reference field.
+_STRIPE_SUMMARY_HEADER_RE = re.compile(
+    r"amount[ \t]*due.*\bdue[ \t]*date\b.*\binvoice[ \t]*number\b", re.IGNORECASE
+)
+
+
+def _extract_invoice_number_from_stripe_summary(lines: list[str]):
+    for i, line in enumerate(lines):
+        if not _STRIPE_SUMMARY_HEADER_RE.search(line):
+            continue
+        joined_parts = []
+        for data_line in lines[i + 1: i + 4]:
+            stripped = data_line.strip()
+            if not stripped or stripped.lower() == "view online":
+                break
+            joined_parts.append(stripped)
+        joined = " ".join(joined_parts)
+        dates = _ANY_DATE_RE.findall(joined)
+        if len(dates) < 2:
+            return None
+        after_issue_date = joined.split(dates[1], 1)[1]
+        m = re.search(r"\b([A-Za-z0-9][A-Za-z0-9\-]{2,31})\b", after_issue_date)
+        if m and m.group(1).lower() not in _INVOICE_NUM_BLOCKLIST:
+            return m.group(1)
+        return None
     return None
 
 
