@@ -251,14 +251,17 @@ def register_routes(app):
         i = 0
         while f"account_{i}" in request.form:
             account = request.form[f"account_{i}"].strip()
-            if account:
-                line_no = request.form.get(f"line_number_{i}") or (len(lines) + 1)
+            description = request.form.get(f"description_{i}", "").strip()
+            amount_raw = request.form.get(f"amount_{i}", "").strip()
+            line_no_raw = request.form.get(f"line_number_{i}", "").strip()
+            if account or description or amount_raw or line_no_raw:
+                line_no = int(line_no_raw) if line_no_raw else (len(lines) + 1)
                 lines.append(
                     {
-                        "line_number": int(line_no),
-                        "account_string": account,
-                        "description": request.form.get(f"description_{i}", ""),
-                        "amount": request.form.get(f"amount_{i}") or 0,
+                        "line_number": line_no,
+                        "account_string": account or None,
+                        "description": description,
+                        "amount": amount_raw or 0,
                     }
                 )
             i += 1
@@ -395,22 +398,30 @@ def register_routes(app):
         i = 0
         while f"account_{i}" in request.form:
             account = request.form[f"account_{i}"].strip()
-            if account:
-                line_no = int(request.form.get(f"line_number_{i}") or (i + 1))
+            description = request.form.get(f"description_{i}", "").strip()
+            amount_raw = request.form.get(f"amount_{i}", "").strip()
+            line_no_raw = request.form.get(f"line_number_{i}", "").strip()
+
+            # A row counts as "used" if it has a line number, an account
+            # string, a description, or an amount — the account string
+            # alone is never required (Munis-imported lines don't have
+            # one until a PM codes them, and that shouldn't erase the row).
+            if account or description or amount_raw or line_no_raw:
+                line_no = int(line_no_raw) if line_no_raw else (i + 1)
                 submitted_numbers.add(line_no)
                 existing = existing_by_number.get(line_no)
                 if existing:
-                    existing.account_string = account
-                    existing.description = request.form.get(f"description_{i}", "")
-                    existing.budgeted_amount = request.form.get(f"amount_{i}") or 0
+                    existing.account_string = account or None
+                    existing.description = description
+                    existing.budgeted_amount = amount_raw or 0
                 else:
                     db.session.add(
                         POBudgetLine(
                             purchase_order_id=po.id,
                             line_number=line_no,
-                            account_string=account,
-                            description=request.form.get(f"description_{i}", ""),
-                            budgeted_amount=request.form.get(f"amount_{i}") or 0,
+                            account_string=account or None,
+                            description=description,
+                            budgeted_amount=amount_raw or 0,
                         )
                     )
             i += 1

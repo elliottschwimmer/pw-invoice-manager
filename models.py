@@ -100,7 +100,10 @@ class POBudgetLine(db.Model):
         db.Integer, db.ForeignKey("purchase_orders.id"), nullable=False
     )
     line_number = db.Column(db.Integer)
-    account_string = db.Column(db.String(128), nullable=False)
+    # Optional — a Munis-imported line starts with no account string at
+    # all (Munis exports don't include GL codes), and a PM may not have
+    # coded every line yet. Never require one to save/keep a line.
+    account_string = db.Column(db.String(128))
     description = db.Column(db.Text)  # PO line-item text, e.g. "Landscaping - Civic Center Park"
     budgeted_amount = db.Column(db.Numeric(12, 2))  # the line's ordered/budgeted amount
 
@@ -223,7 +226,7 @@ class InvoiceCodingLine(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), nullable=False)
     line_number = db.Column(db.Integer)  # matches the PO's line number when copied from one
-    account_string = db.Column(db.String(128), nullable=False)
+    account_string = db.Column(db.String(128))  # optional — may not be coded yet
     description = db.Column(db.Text)  # carried over from the PO budget line
     amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     source = db.Column(db.String(16), default="po")  # "po" | "pm_edit"

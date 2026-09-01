@@ -67,7 +67,7 @@
           <tr>
             <td><input type="number" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
             <td class="account-cell">
-              <input type="text" class="account-input" name="account_{{ loop.index0 }}" value="{{ line.account_string }}" autocomplete="off">
+              <input type="text" class="account-input" name="account_{{ loop.index0 }}" value="{{ line.account_string or '' }}" autocomplete="off">
               <div class="account-desc"></div>
             </td>
             <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}"></td>

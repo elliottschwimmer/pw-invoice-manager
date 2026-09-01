@@ -33,13 +33,20 @@ def _sheet_rows(wb, name: str) -> list[list]:
     return wb.get_sheet_by_name(name).to_python()
 
 
+def _row_dict(header: list, data_row: list) -> dict:
+    """Maps a data row to its header, tolerating Munis's occasional
+    trailing/leading whitespace in header cells (e.g. "Line " instead of
+    "Line")."""
+    clean_header = [(h.strip() if isinstance(h, str) else h) for h in header]
+    return dict(zip(clean_header, data_row))
+
+
 def _parse_po_sheet(wb) -> dict:
     rows = _sheet_rows(wb, "Purchase Order")
     if len(rows) < 2:
         raise ValueError('No "Purchase Order" sheet found, or it has no data row — is this a Munis PO export?')
 
-    header, data = rows[0], rows[1]
-    row = dict(zip(header, data))
+    row = _row_dict(rows[0], rows[1])
 
     return {
         "po_number": _clean_str(row.get("PO Number")),
@@ -59,8 +66,14 @@ def _parse_lines_sheet(wb) -> list[dict]:
     header = rows[0]
     lines = []
     for data_row in rows[1:]:
-        row = dict(zip(header, data_row))
+        if not data_row or all(v is None or v == "" for v in data_row):
+            continue  # skip fully blank rows
+        row = _row_dict(header, data_row)
+        # "Line" is the expected header, but fall back to column A by
+        # position if a Munis export ever ships without that exact label.
         line_number = _to_int(row.get("Line"))
+        if line_number is None:
+            line_number = _to_int(data_row[0]) if data_row else None
         if line_number is None:
             continue
         lines.append({
