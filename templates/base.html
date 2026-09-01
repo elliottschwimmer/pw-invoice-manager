@@ -252,13 +252,14 @@
     // 'change') doesn't trigger two rapid saves.
     (function () {
       let saveTimer = null;
+      let pendingForm = null;
       function showStatus(text, color) {
         const status = document.getElementById('coding-save-status');
         if (!status) return;
         status.innerHTML = '<p style="color:' + color + '; font-size:13px;">' + text + '</p>';
       }
       function doSave(form) {
-        fetch(form.action, {
+        return fetch(form.action, {
           method: 'POST',
           headers: { 'X-Requested-With': 'XMLHttpRequest' },
           body: new FormData(form),
@@ -279,7 +280,29 @@
         const form = e.target.closest('form.auto-save-form');
         if (!form) return;
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(function () { doSave(form); }, 150);
+        pendingForm = form;
+        saveTimer = setTimeout(function () {
+          saveTimer = null;
+          pendingForm = null;
+          doSave(form);
+        }, 150);
+      });
+
+      // Any other form on the page (Suggest lines from PO, Link PO,
+      // Approve, etc.) navigates the whole page, so it must wait for a
+      // still-debounced coding-lines edit to actually reach the server
+      // first — otherwise that delayed save can land AFTER the action
+      // (e.g. a PO suggestion) and silently overwrite what it just did
+      // with the stale value that was in the field before the click.
+      document.addEventListener('submit', function (e) {
+        const form = e.target;
+        if (form.classList.contains('auto-save-form') || !saveTimer) return;
+        e.preventDefault();
+        clearTimeout(saveTimer);
+        saveTimer = null;
+        const toSave = pendingForm;
+        pendingForm = null;
+        Promise.resolve(toSave ? doSave(toSave) : null).finally(function () { form.submit(); });
       });
     })();
 
