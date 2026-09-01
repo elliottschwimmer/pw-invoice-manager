@@ -57,14 +57,13 @@ def _build_stamp_overlay(invoice, page_width: float, page_height: float) -> byte
 
     # Coding lines, bottom-up (excludes the approval — that gets its own
     # signature block below, not just a plain text line).
+    coded_lines = [cl for cl in invoice.coding_lines if cl.amount and float(cl.amount) > 0]
     coding_lines_bottom_up = []
-    for coding_line in reversed(invoice.coding_lines):
-        desc = f" — {coding_line.description}" if coding_line.description else ""
-        account = coding_line.account_string or "(not yet coded)"
+    for coding_line in reversed(coded_lines):
         coding_lines_bottom_up.append(
-            f"  Line {coding_line.line_number or ''}: {account}{desc} — {_money(coding_line.amount)}"
+            f"  Line {coding_line.line_number or ''}: {_money(coding_line.amount)}"
         )
-    if invoice.coding_lines:
+    if coded_lines:
         coding_lines_bottom_up.append(f"Budget Coding (Total {_money(invoice.coding_total)}):")
 
     # Signature block height: printed "Electronically approved..." line,
@@ -143,8 +142,6 @@ def _build_cover_page(invoice) -> bytes:
     line("Budget Line Coding", size=11, bold=True, gap=18)
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin, y, "Line")
-    c.drawString(margin + 0.4 * inch, y, "Account String")
-    c.drawString(margin + 3.1 * inch, y, "Description")
     c.drawString(margin + 6.0 * inch, y, "Amount")
     y -= 6
     c.line(margin, y, width - margin, y)
@@ -152,15 +149,13 @@ def _build_cover_page(invoice) -> bytes:
 
     total = 0
     c.setFont("Helvetica", 9)
-    for coding_line in invoice.coding_lines:
+    coded_lines = [cl for cl in invoice.coding_lines if cl.amount and float(cl.amount) > 0]
+    for coding_line in coded_lines:
         if y < margin + 40:
             c.showPage()
             y = height - margin
             c.setFont("Helvetica", 9)
         c.drawString(margin, y, str(coding_line.line_number or ""))
-        c.drawString(margin + 0.4 * inch, y, coding_line.account_string or "(not yet coded)")
-        desc = (coding_line.description or "")[:50]
-        c.drawString(margin + 3.1 * inch, y, desc)
         amt = float(coding_line.amount or 0)
         total += amt
         c.drawRightString(width - margin, y, _money(amt))

@@ -220,17 +220,41 @@
       });
     })();
 
-    // Auto-save: any <form class="auto-save-form"> submits itself as soon
-    // as a field inside it changes (on blur) — no manual "Save" button.
-    // Debounced slightly so selecting from the account-search dropdown
-    // (which also fires 'change') doesn't trigger two rapid saves.
+    // Auto-save: any <form class="auto-save-form"> saves itself in the
+    // background as soon as a field inside it changes (on blur) — no
+    // manual "Save" button, and no page reload. Debounced slightly so
+    // selecting from the account-search dropdown (which also fires
+    // 'change') doesn't trigger two rapid saves.
     (function () {
       let saveTimer = null;
+      function showStatus(text, color) {
+        const status = document.getElementById('coding-save-status');
+        if (!status) return;
+        status.innerHTML = '<p style="color:' + color + '; font-size:13px;">' + text + '</p>';
+      }
+      function doSave(form) {
+        fetch(form.action, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          body: new FormData(form),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.matches_total === true) {
+              showStatus('✓ ' + data.message, '#1c7a1c');
+            } else if (data.matches_total === false) {
+              showStatus('⚠ ' + data.message, '#a11');
+            } else {
+              showStatus('Saved', '#1c7a1c');
+            }
+          })
+          .catch(function () { showStatus('⚠ Save failed — check your connection and try again.', '#a11'); });
+      }
       document.addEventListener('change', function (e) {
         const form = e.target.closest('form.auto-save-form');
         if (!form) return;
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(function () { form.requestSubmit(); }, 150);
+        saveTimer = setTimeout(function () { doSave(form); }, 150);
       });
     })();
 

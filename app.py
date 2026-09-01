@@ -262,19 +262,24 @@ def register_routes(app):
     @app.route("/invoices/<int:invoice_id>/coding-lines", methods=["POST"])
     def update_coding_lines(invoice_id):
         invoice = Invoice.query.get_or_404(invoice_id)
+        # Account string is no longer edited on this page — preserve whatever
+        # was already stored per line_number (inherited from the linked PO)
+        # rather than wiping it, since the form no longer submits it.
+        existing_accounts_by_line = {
+            cl.line_number: cl.account_string for cl in invoice.coding_lines
+        }
         lines = []
         i = 0
-        while f"account_{i}" in request.form:
-            account = request.form[f"account_{i}"].strip()
+        while f"line_number_{i}" in request.form or f"description_{i}" in request.form or f"amount_{i}" in request.form:
             description = request.form.get(f"description_{i}", "").strip()
             amount_raw = _clean_amount(request.form.get(f"amount_{i}", ""))
             line_no_raw = request.form.get(f"line_number_{i}", "").strip()
-            if account or description or amount_raw or line_no_raw:
+            if description or amount_raw or line_no_raw:
                 line_no = int(line_no_raw) if line_no_raw else (len(lines) + 1)
                 lines.append(
                     {
                         "line_number": line_no,
-                        "account_string": account or None,
+                        "account_string": existing_accounts_by_line.get(line_no),
                         "description": description,
                         "amount": amount_raw or 0,
                     }
@@ -284,12 +289,21 @@ def register_routes(app):
 
         invoice = Invoice.query.get(invoice_id)
         if invoice.coding_matches_total is False:
-            flash(
+            message = (
                 f"Budget coding updated — WARNING: lines total {_money(invoice.coding_total)} "
                 f"but the invoice amount is {_money(invoice.amount)}. Please correct before approving."
             )
         else:
-            flash("Budget coding updated")
+            message = "Budget coding updated"
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return {
+                "ok": True,
+                "message": message,
+                "matches_total": invoice.coding_matches_total,
+            }
+
+        flash(message)
         return redirect(url_for("invoice_detail", invoice_id=invoice_id))
 
     @app.route("/check-mail", methods=["POST"])

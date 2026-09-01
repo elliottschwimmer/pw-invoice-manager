@@ -80,7 +80,7 @@
         {% endif %}
       </div>
 
-      <div class="card">
+      <div class="card" id="budget-coding-content" data-invoice-id="{{ invoice.id }}">
         <h3>Budget Coding {% if invoice.purchase_order %}<span class="muted">(from PO {{ invoice.purchase_order.po_number }})</span>{% endif %}</h3>
         {% if invoice.purchase_order %}
           <p class="muted">Pre-filled from the matching PO — correct any line below before approving.</p>
@@ -100,6 +100,7 @@
         </form>
         {% endif %}
 
+        <div id="coding-save-status">
         {% if invoice.coding_lines and invoice.coding_matches_total is not none %}
           {% if invoice.coding_matches_total %}
             <p style="color:#1c7a1c; font-size:13px;">✓ Coded lines total {{ invoice.coding_total|money }}, matching the invoice amount.</p>
@@ -107,19 +108,16 @@
             <p style="color:#a11; font-weight:600; font-size:13px;">⚠ Coded lines total {{ invoice.coding_total|money }} but the invoice amount is {{ invoice.amount|money }} — these don't match. Correct the allocation before approving.</p>
           {% endif %}
         {% endif %}
+        </div>
 
         <form method="post" action="{{ url_for('update_coding_lines', invoice_id=invoice.id) }}" class="auto-save-form">
-          <p class="muted" style="margin-top:0;">Start typing an account code or description to search the chart of accounts. Line # should match the PO's own line numbering. Changes save automatically when you click away from a field.</p>
+          <p class="muted" style="margin-top:0;">Line # should match the PO's own line numbering. Changes save automatically when you click away from a field.</p>
           <table>
-            <thead><tr><th style="width:8%;">Line #</th><th style="width:30%;">Account String</th><th>Description</th><th style="width:16%;">Amount</th></tr></thead>
+            <thead><tr><th style="width:10%;">Line #</th><th>Description</th><th style="width:20%;">Amount</th></tr></thead>
             <tbody>
               {% for line in invoice.coding_lines %}
               <tr>
                 <td><input type="number" class="line-input" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
-                <td class="account-cell">
-                  <input type="text" class="account-input" name="account_{{ loop.index0 }}" value="{{ line.account_string or '' }}" autocomplete="off">
-                  <div class="account-desc"></div>
-                </td>
                 <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}"></td>
                 <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ loop.index0 }}" value="{{ line.amount }}"></td>
               </tr>
@@ -127,10 +125,6 @@
               {% for i in range(3) %}
               <tr>
                 <td><input type="number" class="line-input" name="line_number_{{ invoice.coding_lines|length + i }}" value="{{ invoice.coding_lines|length + i + 1 }}"></td>
-                <td class="account-cell">
-                  <input type="text" class="account-input" name="account_{{ invoice.coding_lines|length + i }}" autocomplete="off">
-                  <div class="account-desc"></div>
-                </td>
                 <td><input type="text" name="description_{{ invoice.coding_lines|length + i }}"></td>
                 <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ invoice.coding_lines|length + i }}"></td>
               </tr>
