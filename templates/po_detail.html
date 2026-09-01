@@ -52,10 +52,10 @@
       <table>
         <thead>
           <tr>
-            <th style="width:6%;">Line #</th>
-            <th style="width:22%;">Account String</th>
+            <th style="width:8%;">Line #</th>
+            <th style="width:20%;">Account String</th>
             <th>Description</th>
-            <th style="width:11%;">Amount</th>
+            <th style="width:12%;">Amount</th>
             {% if po.budget_lines|selectattr("unit_price", "ne", none)|list %}<th style="width:10%;">Unit Price</th>{% endif %}
             {% if po.budget_lines|selectattr("munis_liquidated_amount", "ne", none)|list %}<th style="width:11%;">Liquidated</th><th style="width:11%;">Balance</th>{% endif %}
           </tr>
@@ -65,13 +65,13 @@
           {% set has_munis = po.budget_lines|selectattr("munis_liquidated_amount", "ne", none)|list %}
           {% for line in po.budget_lines %}
           <tr>
-            <td><input type="number" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
+            <td><input type="number" class="line-input" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
             <td class="account-cell">
               <input type="text" class="account-input" name="account_{{ loop.index0 }}" value="{{ line.account_string or '' }}" autocomplete="off">
               <div class="account-desc"></div>
             </td>
             <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}"></td>
-            <td><input type="number" step="0.01" name="amount_{{ loop.index0 }}" value="{{ line.budgeted_amount }}"></td>
+            <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ loop.index0 }}" value="{{ line.budgeted_amount }}"></td>
             {% if has_unit_price %}<td class="muted">{{ line.unit_price|money if line.unit_price is not none else "—" }}</td>{% endif %}
             {% if has_munis %}
               <td class="muted">{{ line.munis_liquidated_amount|money if line.munis_liquidated_amount is not none else "—" }}</td>
@@ -81,13 +81,13 @@
           {% endfor %}
           {% for i in range(5) %}
           <tr>
-            <td><input type="number" name="line_number_{{ po.budget_lines|length + i }}" value="{{ po.budget_lines|length + i + 1 }}"></td>
+            <td><input type="number" class="line-input" name="line_number_{{ po.budget_lines|length + i }}" value="{{ po.budget_lines|length + i + 1 }}"></td>
             <td class="account-cell">
               <input type="text" class="account-input" name="account_{{ po.budget_lines|length + i }}" autocomplete="off">
               <div class="account-desc"></div>
             </td>
             <td><input type="text" name="description_{{ po.budget_lines|length + i }}"></td>
-            <td><input type="number" step="0.01" name="amount_{{ po.budget_lines|length + i }}"></td>
+            <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ po.budget_lines|length + i }}"></td>
             {% if has_unit_price %}<td></td>{% endif %}
             {% if has_munis %}<td></td><td></td>{% endif %}
           </tr>

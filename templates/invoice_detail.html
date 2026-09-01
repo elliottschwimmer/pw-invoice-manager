@@ -107,24 +107,24 @@
             <tbody>
               {% for line in invoice.coding_lines %}
               <tr>
-                <td><input type="number" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
+                <td><input type="number" class="line-input" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
                 <td class="account-cell">
                   <input type="text" class="account-input" name="account_{{ loop.index0 }}" value="{{ line.account_string or '' }}" autocomplete="off">
                   <div class="account-desc"></div>
                 </td>
                 <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}"></td>
-                <td><input type="number" step="0.01" name="amount_{{ loop.index0 }}" value="{{ line.amount }}"></td>
+                <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ loop.index0 }}" value="{{ line.amount }}"></td>
               </tr>
               {% endfor %}
               {% for i in range(3) %}
               <tr>
-                <td><input type="number" name="line_number_{{ invoice.coding_lines|length + i }}" value="{{ invoice.coding_lines|length + i + 1 }}"></td>
+                <td><input type="number" class="line-input" name="line_number_{{ invoice.coding_lines|length + i }}" value="{{ invoice.coding_lines|length + i + 1 }}"></td>
                 <td class="account-cell">
                   <input type="text" class="account-input" name="account_{{ invoice.coding_lines|length + i }}" autocomplete="off">
                   <div class="account-desc"></div>
                 </td>
                 <td><input type="text" name="description_{{ invoice.coding_lines|length + i }}"></td>
-                <td><input type="number" step="0.01" name="amount_{{ invoice.coding_lines|length + i }}"></td>
+                <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ invoice.coding_lines|length + i }}"></td>
               </tr>
               {% endfor %}
             </tbody>

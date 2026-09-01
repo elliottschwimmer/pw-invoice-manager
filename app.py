@@ -29,6 +29,12 @@ def _money(value):
     return "${:,.2f}".format(value)
 
 
+def _clean_amount(raw: str) -> str:
+    """Amount fields are comma-formatted text inputs (for display), so
+    strip $ and , before this ever reaches a Numeric column."""
+    return raw.replace("$", "").replace(",", "").strip()
+
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
@@ -252,7 +258,7 @@ def register_routes(app):
         while f"account_{i}" in request.form:
             account = request.form[f"account_{i}"].strip()
             description = request.form.get(f"description_{i}", "").strip()
-            amount_raw = request.form.get(f"amount_{i}", "").strip()
+            amount_raw = _clean_amount(request.form.get(f"amount_{i}", ""))
             line_no_raw = request.form.get(f"line_number_{i}", "").strip()
             if account or description or amount_raw or line_no_raw:
                 line_no = int(line_no_raw) if line_no_raw else (len(lines) + 1)
@@ -399,7 +405,7 @@ def register_routes(app):
         while f"account_{i}" in request.form:
             account = request.form[f"account_{i}"].strip()
             description = request.form.get(f"description_{i}", "").strip()
-            amount_raw = request.form.get(f"amount_{i}", "").strip()
+            amount_raw = _clean_amount(request.form.get(f"amount_{i}", ""))
             line_no_raw = request.form.get(f"line_number_{i}", "").strip()
 
             # A row counts as "used" if it has a line number, an account

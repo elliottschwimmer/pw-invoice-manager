@@ -101,6 +101,22 @@
     .account-suggestion:hover, .account-suggestion.active { background: #fdf1e9; }
     .account-suggestion .acct { font-weight: 600; font-family: ui-monospace, monospace; font-size: 12px; }
     .account-suggestion .desc { color: var(--muted); font-size: 12px; }
+
+    /* Line # column: narrow by design, but needs room for the digit once
+       padding + the number spinner are accounted for. */
+    input.line-input {
+      padding: 8px 2px; text-align: center; -moz-appearance: textfield;
+    }
+    input.line-input::-webkit-outer-spin-button,
+    input.line-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+    /* Currency inputs: a fixed "$" prefix, comma-formatted as you type/blur. */
+    .currency-cell { position: relative; }
+    .currency-cell::before {
+      content: "$"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      color: var(--muted); font-size: 14px; pointer-events: none;
+    }
+    input.currency-input { padding-left: 20px; text-align: right; }
   </style>
 </head>
 <body>
@@ -197,6 +213,31 @@
       document.addEventListener('focusout', function (e) {
         if (!e.target.matches('.account-input')) return;
         setTimeout(closeBox, 150);
+      });
+    })();
+
+    // Currency inputs: show comma-formatted ("1,560.14") once loaded and
+    // whenever the field loses focus; a plain unformatted number (no
+    // commas) while actively typing so the cursor doesn't jump around.
+    // The $ sign is CSS only (.currency-cell::before), never part of the
+    // field's value, so submitted amounts are always plain numbers.
+    (function () {
+      function formatCurrency(input) {
+        const raw = input.value.replace(/,/g, '').trim();
+        if (raw === '' || isNaN(raw)) return;
+        input.value = Number(raw).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+      function unformatCurrency(input) {
+        input.value = input.value.replace(/,/g, '');
+      }
+
+      document.querySelectorAll('input.currency-input').forEach(formatCurrency);
+
+      document.addEventListener('focusin', function (e) {
+        if (e.target.matches('input.currency-input')) unformatCurrency(e.target);
+      });
+      document.addEventListener('focusout', function (e) {
+        if (e.target.matches('input.currency-input')) formatCurrency(e.target);
       });
     })();
   </script>
