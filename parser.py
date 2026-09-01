@@ -58,7 +58,14 @@ _PO_NUM_RE = re.compile(
     re.IGNORECASE,
 )
 _AMOUNT_RE = re.compile(
-    r"(?:total[ \t]*(?:due|amount)?|amount[ \t]*due|balance[ \t]*due)[ \t]*[:$]?[ \t]*\$?[ \t]*([\d,]+\.\d{2})",
+    # \b before the label so "total" doesn't match inside "Subtotal" and
+    # grab a subtotal instead of the real total.
+    r"\b(?:total[ \t]*(?:due|amount)?|amount[ \t]*due|balance[ \t]*due|net[ \t]*amount)\b"
+    # Up to 40 non-digit characters between the label and the number —
+    # covers "Total USD________________10,861.34" (a currency code plus a
+    # run of underscores used as a remittance-slip fill line), not just a
+    # bare "$" or colon.
+    r"[^\d\n]{0,40}([\d,]+\.\d{2})",
     re.IGNORECASE,
 )
 _FALLBACK_AMOUNT_RE = re.compile(r"\$[ \t]*([\d,]+\.\d{2})")

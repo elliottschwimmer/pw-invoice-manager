@@ -33,6 +33,14 @@
         </datalist>
       </form>
 
+      <form method="post" action="{{ url_for('set_amount', invoice_id=invoice.id) }}" style="margin-top:12px;">
+        <label>Invoice Amount{% if invoice.amount is none %} — not detected, enter it here{% else %} — wrong? Correct it here{% endif %}</label>
+        <div class="currency-cell" style="display:flex; gap:8px;">
+          <input type="text" inputmode="decimal" class="currency-input" name="amount" value="{{ invoice.amount if invoice.amount is not none else '' }}" placeholder="0.00">
+          <button class="btn btn-secondary" type="submit">Save</button>
+        </div>
+      </form>
+
       <form method="post" action="{{ url_for('set_due_date', invoice_id=invoice.id) }}" style="margin-top:12px;">
         <label>Set / update due date</label>
         <div style="display:flex; gap:8px;">

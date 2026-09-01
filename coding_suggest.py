@@ -116,4 +116,29 @@ def suggest_coding_lines(invoice: Invoice) -> list[dict]:
                 "confidence": "high" if best_score >= 0.4 else "medium",
             }
 
+    _reconcile_to_invoice_total(suggestions, invoice.amount)
     return sorted(suggestions.values(), key=lambda s: s["line_number"] or 0)
+
+
+def _reconcile_to_invoice_total(suggestions: dict, invoice_amount):
+    """Item-level matching often won't add up to the invoice's total on
+    its own — tax, shipping, or rounding differences rarely show up as
+    their own itemized line. Rather than leaving that difference
+    unallocated, spread it proportionally across the matched lines so the
+    suggested coding always sums to exactly what's owed."""
+    if invoice_amount is None or not suggestions:
+        return
+    total_matched = sum(s["amount"] for s in suggestions.values())
+    if total_matched <= 0 or total_matched == invoice_amount:
+        return
+
+    scale = invoice_amount / total_matched
+    lines = list(suggestions.values())
+    running = Decimal("0")
+    for i, s in enumerate(lines):
+        if i == len(lines) - 1:
+            s["amount"] = invoice_amount - running  # absorb rounding on the last line
+        else:
+            adjusted = (s["amount"] * scale).quantize(Decimal("0.01"))
+            s["amount"] = adjusted
+            running += adjusted
