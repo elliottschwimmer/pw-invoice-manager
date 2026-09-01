@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}PW Invoice Manager{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/berkeley-logo.png') }}">
   <style>
     :root {
       --berkeley-red: #c8102e;
@@ -118,6 +119,17 @@
       color: var(--muted); font-size: 14px; pointer-events: none;
     }
     input.currency-input { padding-left: 20px; padding-right: 8px; text-align: right; min-width: 90px; }
+
+    /* Drag-and-drop file upload zone. */
+    .dropzone {
+      border: 2px dashed var(--border); border-radius: 8px; padding: 28px 16px;
+      text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 4px;
+    }
+    .dropzone:hover { border-color: var(--berkeley-red); }
+    .dropzone.dropzone-active { border-color: var(--berkeley-red); background: #fdf1e9; }
+    .dropzone-text { margin: 0; font-size: 14px; color: var(--text); }
+    .dropzone-filename { margin: 6px 0 0; font-weight: 600; }
   </style>
 </head>
 <body>

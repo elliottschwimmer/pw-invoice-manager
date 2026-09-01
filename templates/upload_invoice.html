@@ -6,11 +6,52 @@
     <p class="muted">For solo use before the shared mailbox is connected — upload a PDF sent to you directly. It's parsed the same way as an emailed invoice: vendor, invoice #, amount, PO #, and due date are extracted automatically, then you assign, code, and approve it as usual.</p>
     <form method="post" action="{{ url_for('upload_invoice') }}" enctype="multipart/form-data">
       <label>Invoice PDF</label>
-      <input type="file" name="invoice_file" accept="application/pdf" required>
+      <div class="dropzone" id="invoice-dropzone">
+        <p class="dropzone-text">Drag &amp; drop a PDF here, or click to choose a file</p>
+        <p class="dropzone-filename muted" id="invoice-dropzone-filename"></p>
+        <input type="file" name="invoice_file" id="invoice-file-input" accept="application/pdf" required style="display:none;">
+      </div>
       <label>Uploaded by</label>
       <input type="text" name="uploaded_by" placeholder="Your name">
       <button class="btn" type="submit" style="margin-top:14px;">Upload</button>
     </form>
+    <script>
+      (function () {
+        const zone = document.getElementById('invoice-dropzone');
+        const input = document.getElementById('invoice-file-input');
+        const filenameEl = document.getElementById('invoice-dropzone-filename');
+        if (!zone || !input) return;
+
+        function showFilename() {
+          filenameEl.textContent = input.files.length ? input.files[0].name : '';
+        }
+
+        zone.addEventListener('click', function () { input.click(); });
+        input.addEventListener('change', showFilename);
+
+        ['dragenter', 'dragover'].forEach(function (evt) {
+          zone.addEventListener(evt, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.add('dropzone-active');
+          });
+        });
+        ['dragleave', 'drop'].forEach(function (evt) {
+          zone.addEventListener(evt, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.remove('dropzone-active');
+          });
+        });
+        zone.addEventListener('drop', function (e) {
+          const files = e.dataTransfer.files;
+          if (files && files.length) {
+            input.files = files;
+            showFilename();
+          }
+        });
+      })();
+    </script>
     <p class="muted" style="margin-top:14px;">If the PDF contains more than one invoice (a vendor sometimes bundles several together), it's automatically split into separate invoices.</p>
   </div>
 {% endblock %}

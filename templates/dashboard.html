@@ -11,16 +11,6 @@
     </div>
   </div>
 
-  {% if pos_needing_fy_review %}
-  <div class="card" style="border-color:#e0a020; background:#fffaf0;">
-    <h3>Fiscal Year Review Needed — {{ current_fiscal_year_label() }}</h3>
-    <p class="muted">{{ pos_needing_fy_review|length }} fiscal-year PO(s) haven't been reviewed since the fiscal year rolled over on 7/1:</p>
-    {% for po in pos_needing_fy_review %}
-      <p><a class="row-link" href="{{ url_for('edit_po', po_id=po.id) }}">PO {{ po.po_number }}</a> — last reviewed for {{ po.fiscal_year_label or "an earlier year" }}</p>
-    {% endfor %}
-  </div>
-  {% endif %}
-
   <div class="filters">
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if not active_status }}">All ({{ counts['all'] }})</a>
     <a href="{{ url_for('dashboard', status='needs_assignment') }}" class="{{ 'active' if active_status=='needs_assignment' }}">Needs Assignment ({{ counts['needs_assignment'] }})</a>
