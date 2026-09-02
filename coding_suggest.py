@@ -62,6 +62,7 @@ def suggest_coding_lines(invoice: Invoice) -> list[dict]:
     if not po_lines:
         return []
 
+    po_lines_by_number = {pl.line_number: pl for pl in po_lines}
     remaining = {pl.id: remaining_budget(pl, exclude_invoice_id=invoice.id) for pl in po_lines}
     items = parse_invoice_line_items(invoice.extracted_text or "")
     # Some invoice layouts print the item's description on a separate line
@@ -71,56 +72,74 @@ def suggest_coding_lines(invoice: Invoice) -> list[dict]:
     # not having found an item at all rather than silently dropping it.
     items = [item for item in items if _words(item["description"])]
 
+    suggestions = {}  # po_line.id -> suggestion dict (merged if multiple items match the same line)
+
     if not items:
         # No itemized breakdown found — fall back to suggesting a single
         # PO line for the whole invoice amount, only if exactly one line
         # has enough remaining budget to plausibly cover it (otherwise
         # it's a genuine judgment call, so leave it to the PM).
-        if invoice.amount is None:
-            return []
-        candidates = [pl for pl in po_lines if remaining[pl.id] >= invoice.amount - Decimal("0.01")]
-        if len(candidates) != 1:
-            return []
-        pl = candidates[0]
-        return [{
+        if invoice.amount is not None:
+            candidates = [pl for pl in po_lines if remaining[pl.id] >= invoice.amount - Decimal("0.01")]
+            if len(candidates) == 1:
+                pl = candidates[0]
+                suggestions[pl.id] = {
+                    "line_number": pl.line_number, "account_string": pl.account_string,
+                    "description": pl.description, "amount": invoice.amount,
+                    "matched_item": "(whole invoice — only one PO line had enough budget)",
+                    "confidence": "low",
+                }
+    else:
+        for item in items:
+            item_words = _words(item["description"])
+            best_pl, best_score = None, 0.0
+            for pl in po_lines:
+                if remaining[pl.id] < item["amount"] - Decimal("0.01"):
+                    continue  # not enough budget left on this line for this item
+                pl_words = _words(pl.description)
+                if not item_words or not pl_words:
+                    continue
+                overlap = len(item_words & pl_words)
+                score = overlap / len(item_words | pl_words)
+                if score > best_score:
+                    best_pl, best_score = pl, score
+
+            if best_pl is None or best_score < 0.15:
+                continue  # no plausible match for this item — leave it to the PM
+
+            remaining[best_pl.id] -= item["amount"]  # reserve so later items don't double-spend it
+            key = best_pl.id
+            if key in suggestions:
+                suggestions[key]["amount"] += item["amount"]
+                suggestions[key]["matched_item"] += f"; {item['description']}"
+            else:
+                suggestions[key] = {
+                    "line_number": best_pl.line_number,
+                    "account_string": best_pl.account_string,
+                    "description": best_pl.description,
+                    "amount": item["amount"],
+                    "matched_item": item["description"],
+                    "confidence": "high" if best_score >= 0.4 else "medium",
+                }
+
+    # Keep any PO line the PM has already added to this invoice's coding
+    # (e.g. via the "add a PO line" picker) even if no invoice item matched
+    # it, so re-running "Suggest lines from PO" reallocates the total
+    # across everything currently on the invoice instead of silently
+    # dropping a line the PM deliberately chose to include.
+    already_coded_numbers = {cl.line_number for cl in invoice.coding_lines}
+    for line_no in already_coded_numbers:
+        pl = po_lines_by_number.get(line_no)
+        if pl is None or pl.id in suggestions:
+            continue
+        suggestions[pl.id] = {
             "line_number": pl.line_number, "account_string": pl.account_string,
-            "description": pl.description, "amount": invoice.amount,
-            "matched_item": "(whole invoice — only one PO line had enough budget)",
-            "confidence": "low",
-        }]
+            "description": pl.description, "amount": Decimal("0"),
+            "matched_item": "(kept — already on this invoice)", "confidence": "manual",
+        }
 
-    suggestions = {}  # po_line.id -> suggestion dict (merged if multiple items match the same line)
-    for item in items:
-        item_words = _words(item["description"])
-        best_pl, best_score = None, 0.0
-        for pl in po_lines:
-            if remaining[pl.id] < item["amount"] - Decimal("0.01"):
-                continue  # not enough budget left on this line for this item
-            pl_words = _words(pl.description)
-            if not item_words or not pl_words:
-                continue
-            overlap = len(item_words & pl_words)
-            score = overlap / len(item_words | pl_words)
-            if score > best_score:
-                best_pl, best_score = pl, score
-
-        if best_pl is None or best_score < 0.15:
-            continue  # no plausible match for this item — leave it to the PM
-
-        remaining[best_pl.id] -= item["amount"]  # reserve so later items don't double-spend it
-        key = best_pl.id
-        if key in suggestions:
-            suggestions[key]["amount"] += item["amount"]
-            suggestions[key]["matched_item"] += f"; {item['description']}"
-        else:
-            suggestions[key] = {
-                "line_number": best_pl.line_number,
-                "account_string": best_pl.account_string,
-                "description": best_pl.description,
-                "amount": item["amount"],
-                "matched_item": item["description"],
-                "confidence": "high" if best_score >= 0.4 else "medium",
-            }
+    if not suggestions:
+        return []
 
     _reconcile_to_invoice_total(suggestions, invoice.amount)
     return sorted(suggestions.values(), key=lambda s: s["line_number"] or 0)
@@ -131,15 +150,26 @@ def _reconcile_to_invoice_total(suggestions: dict, invoice_amount):
     its own — tax, shipping, or rounding differences rarely show up as
     their own itemized line. Rather than leaving that difference
     unallocated, spread it proportionally across the matched lines so the
-    suggested coding always sums to exactly what's owed."""
+    suggested coding always sums to exactly what's owed.
+
+    A line the PM added by hand (with no matched item) starts at $0 — give
+    it an equal baseline share first so proportional scaling doesn't leave
+    it at $0 forever (0 x any scale is still 0); every other line's weight
+    is unaffected since this only tops up lines that were exactly zero."""
     if invoice_amount is None or not suggestions:
         return
-    total_matched = sum(s["amount"] for s in suggestions.values())
+    lines = list(suggestions.values())
+    if any(s["amount"] == 0 for s in lines) and invoice_amount:
+        baseline = invoice_amount / len(lines)
+        for s in lines:
+            if s["amount"] == 0:
+                s["amount"] = baseline
+
+    total_matched = sum(s["amount"] for s in lines)
     if total_matched <= 0 or total_matched == invoice_amount:
         return
 
     scale = invoice_amount / total_matched
-    lines = list(suggestions.values())
     running = Decimal("0")
     for i, s in enumerate(lines):
         if i == len(lines) - 1:

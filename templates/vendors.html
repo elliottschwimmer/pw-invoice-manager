@@ -2,6 +2,26 @@
 {% block title %}Vendors — PW Invoice Manager{% endblock %}
 {% block content %}
   <h2>Vendors</h2>
+
+  {% if duplicate_groups %}
+  <div class="card" style="border-color:#e0a020; background:#fffaf0;">
+    <h3>Possible Duplicates</h3>
+    <p class="muted">These vendor names differ only in punctuation, capitalization, or spacing — pick which one to keep and merge the rest into it. Merging moves all of a duplicate's invoices and POs onto the vendor you keep, then removes the duplicate entry.</p>
+    {% for group in duplicate_groups %}
+    <form method="post" action="{{ url_for('merge_vendors') }}" style="border-top:1px solid var(--border); padding-top:12px; margin-top:12px;">
+      {% for r in group %}
+        <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:6px;">
+          <input type="radio" name="keep_vendor_id" value="{{ r.vendor.id }}" style="width:auto;" {% if loop.first %}checked{% endif %} required>
+          <input type="hidden" name="merge_vendor_ids" value="{{ r.vendor.id }}">
+          <span><strong>{{ r.vendor.name }}</strong> <span class="muted">— {{ r.invoice_count }} invoice(s), {{ r.total_amount|money }}</span></span>
+        </label>
+      {% endfor %}
+      <button class="btn btn-secondary" type="submit" style="margin-top:10px;">Merge — keep the selected one</button>
+    </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="card" style="padding:0;">
     <table>
       <thead><tr><th>Vendor</th><th>Invoices</th><th>Open</th><th>Total Amount</th></tr></thead>

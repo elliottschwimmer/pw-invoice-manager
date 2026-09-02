@@ -64,7 +64,9 @@ def _build_stamp_overlay(invoice, page_width: float, page_height: float) -> byte
             f"  Line {coding_line.line_number or ''}: {_money(coding_line.amount)}"
         )
     if coded_lines:
-        coding_lines_bottom_up.append(f"Budget Coding (Total {_money(invoice.coding_total)}):")
+        po_number = invoice.purchase_order.po_number if invoice.purchase_order else invoice.po_number
+        po_part = f"PO {po_number} — " if po_number else ""
+        coding_lines_bottom_up.append(f"{po_part}Budget Coding (Total {_money(invoice.coding_total)}):")
 
     # Signature block height: printed "Electronically approved..." line,
     # the signature underline, and the signature name above it.
@@ -85,7 +87,7 @@ def _build_stamp_overlay(invoice, page_width: float, page_height: float) -> byte
         y -= line_gap
 
     for text in reversed(coding_lines_bottom_up):
-        text_line(text, bold=text.startswith("Budget Coding"))
+        text_line(text, bold="Budget Coding" in text)
 
     if invoice.pm_approved_at:
         y -= 4

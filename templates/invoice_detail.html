@@ -110,18 +110,30 @@
         {% endif %}
         </div>
 
+        {% if invoice.purchase_order %}
+        <datalist id="po-line-options">
+          {% for pl in invoice.purchase_order.budget_lines %}
+          <option value="PO Line {{ pl.line_number }}: {{ pl.description or '(no description)' }}">
+          {% endfor %}
+        </datalist>
+        {% endif %}
+
         <form method="post" action="{{ url_for('update_coding_lines', invoice_id=invoice.id) }}" class="auto-save-form">
-          <p class="muted" style="margin-top:0;">Line # should match the PO's own line numbering. Changes save automatically when you click away from a field.</p>
+          <p class="muted" style="margin-top:0;">
+            Line # should match the PO's own line numbering. Changes save automatically when you click away from a field.
+            {% if invoice.purchase_order %}In an empty Description field, start typing (or click) to pick one of the PO's own budget lines to add.{% endif %}
+          </p>
           <table>
             <thead><tr>
               <th style="width:10%;">Line #</th><th>Description</th><th style="width:16%;">Amount</th>
               {% if invoice.purchase_order %}<th style="width:24%;">Budget Remaining</th>{% endif %}
+              <th style="width:5%;"></th>
             </tr></thead>
             <tbody>
               {% for line in invoice.coding_lines %}
               <tr class="coding-row">
                 <td><input type="number" class="line-input" name="line_number_{{ loop.index0 }}" value="{{ line.line_number or loop.index }}"></td>
-                <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}"></td>
+                <td><input type="text" name="description_{{ loop.index0 }}" value="{{ line.description or '' }}" {% if invoice.purchase_order %}list="po-line-options" class="po-line-picker"{% endif %}></td>
                 <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ loop.index0 }}" value="{{ line.amount }}"></td>
                 {% if invoice.purchase_order %}
                 <td class="budget-progress-cell">
@@ -129,12 +141,13 @@
                   <div class="budget-progress-text muted"></div>
                 </td>
                 {% endif %}
+                <td><button type="button" class="remove-coding-row" title="Remove this line" aria-label="Remove this line">&times;</button></td>
               </tr>
               {% endfor %}
               {% for i in range(3) %}
               <tr class="coding-row">
                 <td><input type="number" class="line-input" name="line_number_{{ invoice.coding_lines|length + i }}" value="{{ invoice.coding_lines|length + i + 1 }}"></td>
-                <td><input type="text" name="description_{{ invoice.coding_lines|length + i }}"></td>
+                <td><input type="text" name="description_{{ invoice.coding_lines|length + i }}" {% if invoice.purchase_order %}list="po-line-options" class="po-line-picker"{% endif %}></td>
                 <td class="currency-cell"><input type="text" inputmode="decimal" class="currency-input" name="amount_{{ invoice.coding_lines|length + i }}"></td>
                 {% if invoice.purchase_order %}
                 <td class="budget-progress-cell">
@@ -142,11 +155,45 @@
                   <div class="budget-progress-text muted"></div>
                 </td>
                 {% endif %}
+                <td><button type="button" class="remove-coding-row" title="Remove this line" aria-label="Remove this line">&times;</button></td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
         </form>
+
+        <script>
+          (function () {
+            // Picking "PO Line N: description" from the datalist fills in
+            // the row's Line # automatically and trims the text back down
+            // to just the description, so the field doesn't keep showing
+            // the "PO Line N:" prefix once it's been picked.
+            document.addEventListener('input', function (e) {
+              if (!e.target.matches('.po-line-picker')) return;
+              const m = /^PO Line (\d+):\s*(.*)$/.exec(e.target.value);
+              if (!m) return;
+              const row = e.target.closest('tr.coding-row');
+              if (!row) return;
+              const lineInput = row.querySelector('input.line-input');
+              if (lineInput) lineInput.value = m[1];
+              e.target.value = m[2];
+              e.target.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+
+            // Remove a row entirely (rather than just blanking it) and
+            // save immediately — a structural change, not a field edit,
+            // so it doesn't wait for the debounce.
+            document.addEventListener('click', function (e) {
+              const btn = e.target.closest('button.remove-coding-row');
+              if (!btn) return;
+              const row = btn.closest('tr.coding-row');
+              const form = btn.closest('form.auto-save-form');
+              if (!row || !form) return;
+              row.remove();
+              form.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+          })();
+        </script>
 
         {% if invoice.purchase_order %}
         <script type="application/json" id="budget-progress-data">{{ budget_progress|tojson }}</script>

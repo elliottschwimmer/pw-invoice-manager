@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, date
 from decimal import Decimal
 from io import BytesIO
@@ -36,6 +37,14 @@ def _clean_amount(raw: str) -> str:
     """Amount fields are comma-formatted text inputs (for display), so
     strip $ and , before this ever reaches a Numeric column."""
     return raw.replace("$", "").replace(",", "").strip()
+
+
+def _normalize_vendor_name(name: str) -> str:
+    """Lowercase, punctuation-insensitive, whitespace-collapsed form of a
+    vendor name — used only to spot likely duplicates ("Turnstone Data
+    Inc." vs "Turnstone Data, Inc" vs "turnstone data inc"), never stored."""
+    stripped = re.sub(r"[^\w\s]", "", (name or "").lower())
+    return re.sub(r"\s+", " ", stripped).strip()
 
 
 def create_app():
@@ -293,14 +302,32 @@ def register_routes(app):
     def update_coding_lines(invoice_id):
         invoice = Invoice.query.get_or_404(invoice_id)
         # Account string is no longer edited on this page — preserve whatever
-        # was already stored per line_number (inherited from the linked PO)
-        # rather than wiping it, since the form no longer submits it.
+        # was already stored per line_number (inherited from the linked PO),
+        # falling back to the PO's own budget line for one newly added via
+        # the "add a PO line" picker that hasn't been coded on this invoice
+        # before — rather than wiping it, since the form no longer submits
+        # an account string field at all.
         existing_accounts_by_line = {
             cl.line_number: cl.account_string for cl in invoice.coding_lines
         }
+        po_accounts_by_line = {}
+        if invoice.purchase_order:
+            po_accounts_by_line = {
+                pl.line_number: pl.account_string for pl in invoice.purchase_order.budget_lines
+            }
         lines = []
-        i = 0
-        while f"line_number_{i}" in request.form or f"description_{i}" in request.form or f"amount_{i}" in request.form:
+        # A fixed range rather than "stop at the first missing index" — the
+        # PM can delete a row from the middle of the table (via the row's
+        # remove button), which leaves a gap in the submitted field
+        # indices; stopping at that gap would silently drop every row after
+        # it instead of just the deleted one.
+        for i in range(50):
+            if (
+                f"line_number_{i}" not in request.form
+                and f"description_{i}" not in request.form
+                and f"amount_{i}" not in request.form
+            ):
+                continue
             description = request.form.get(f"description_{i}", "").strip()
             amount_raw = _clean_amount(request.form.get(f"amount_{i}", ""))
             line_no_raw = request.form.get(f"line_number_{i}", "").strip()
@@ -309,12 +336,11 @@ def register_routes(app):
                 lines.append(
                     {
                         "line_number": line_no,
-                        "account_string": existing_accounts_by_line.get(line_no),
+                        "account_string": existing_accounts_by_line.get(line_no) or po_accounts_by_line.get(line_no),
                         "description": description,
                         "amount": amount_raw or 0,
                     }
                 )
-            i += 1
         _apply_coding_lines(invoice, lines)
 
         invoice = Invoice.query.get(invoice_id)
@@ -609,7 +635,43 @@ def register_routes(app):
                 "open_count": sum(1 for inv in invoices if inv.status != "entered_in_munis"),
             })
         rows.sort(key=lambda r: r["vendor"].name.lower())
-        return render_template("vendors.html", rows=rows)
+
+        # Group vendors whose names normalize to the same thing (case,
+        # punctuation, and whitespace differences only) — the common shape
+        # of a duplicate vendor entry — so staff can merge them with one
+        # click instead of hunting through the full list by eye.
+        groups = {}
+        for r in rows:
+            groups.setdefault(_normalize_vendor_name(r["vendor"].name), []).append(r)
+        duplicate_groups = [g for g in groups.values() if len(g) > 1]
+        duplicate_groups.sort(key=lambda g: g[0]["vendor"].name.lower())
+
+        return render_template("vendors.html", rows=rows, duplicate_groups=duplicate_groups)
+
+    @app.route("/vendors/merge", methods=["POST"])
+    def merge_vendors():
+        keep_id = request.form.get("keep_vendor_id", type=int)
+        merge_ids = [int(v) for v in request.form.getlist("merge_vendor_ids") if v]
+        merge_ids = [v for v in merge_ids if v != keep_id]
+        if not keep_id or not merge_ids:
+            flash("Choose which vendor to keep and at least one duplicate to merge into it.")
+            return redirect(url_for("vendors_list"))
+
+        keep = Vendor.query.get_or_404(keep_id)
+        merged_names = []
+        for dup_id in merge_ids:
+            dup = Vendor.query.get(dup_id)
+            if not dup:
+                continue
+            merged_names.append(dup.name)
+            Invoice.query.filter_by(vendor_id=dup.id).update({"vendor_id": keep.id})
+            PurchaseOrder.query.filter_by(vendor_id=dup.id).update({"vendor_id": keep.id})
+            VendorAssignment.query.filter_by(vendor_id=dup.id).update({"vendor_id": keep.id})
+            db.session.flush()
+            db.session.delete(dup)
+        db.session.commit()
+        flash(f"Merged {', '.join(merged_names)} into {keep.name}")
+        return redirect(url_for("vendors_list"))
 
     @app.route("/vendors/<int:vendor_id>")
     def vendor_detail(vendor_id):

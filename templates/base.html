@@ -119,6 +119,13 @@
       color: var(--muted); font-size: 14px; pointer-events: none;
     }
     input.currency-input { padding-left: 20px; padding-right: 8px; text-align: right; min-width: 90px; }
+    /* Inside a table cell the ::before is positioned relative to the td's
+       own box, but the td's default padding (see th, td above) pushes the
+       input's actual left edge further right than that — leaving the "$"
+       straddling the input's border instead of sitting inside it. Zeroing
+       the td's padding here and relying on the input's own padding instead
+       keeps the "$" fully inside the input. */
+    td.currency-cell { padding: 0; }
 
     /* Drag-and-drop file upload zone. */
     .dropzone {
@@ -143,6 +150,13 @@
     }
     .budget-progress-fill.over-budget { background: var(--berkeley-red); }
     .budget-progress-text { font-size: 11px; white-space: nowrap; }
+
+    button.remove-coding-row {
+      width: 24px; height: 24px; padding: 0; border-radius: 50%;
+      border: 1px solid var(--border); background: #fff; color: var(--muted);
+      font-size: 16px; line-height: 1; cursor: pointer;
+    }
+    button.remove-coding-row:hover { border-color: var(--berkeley-red); color: var(--berkeley-red); background: #fdf1e9; }
   </style>
 </head>
 <body>
