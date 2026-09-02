@@ -11,7 +11,7 @@ from flask import (
 from config import Config
 from models import (
     db, Invoice, Vendor, Staff, VendorAssignment, PurchaseOrder, POBudgetLine,
-    OutgoingEmailLog, ActiveAccount,
+    InvoiceCodingLine, OutgoingEmailLog, ActiveAccount,
 )
 from intake import (
     ingest_new_invoices, create_invoice_from_upload, assign_invoice, approve_invoice,
@@ -39,6 +39,14 @@ def _clean_amount(raw: str) -> str:
     return raw.replace("$", "").replace(",", "").strip()
 
 
+def _has_budget_data(pl) -> bool:
+    """True if this PO budget line actually has something in it (account
+    string, description, or a nonzero amount) — used to filter out empty
+    rows that got saved as real POBudgetLine records (a since-fixed bug in
+    how blank template rows were kept) from counts and totals."""
+    return bool(pl.account_string or pl.description or (pl.budgeted_amount and pl.budgeted_amount != 0))
+
+
 def _normalize_vendor_name(name: str) -> str:
     """Lowercase, punctuation-insensitive, whitespace-collapsed form of a
     vendor name — used only to spot likely duplicates ("Turnstone Data
@@ -58,11 +66,32 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        _cleanup_ghost_budget_lines()
 
     register_auth(app)
     register_routes(app)
     register_mail_poller(app)
     return app
+
+
+def _cleanup_ghost_budget_lines():
+    """One-time cleanup, safe to run on every startup: blank template rows
+    in the PO budget-lines and invoice coding-lines tables used to get
+    saved as real, empty database rows whenever the form was submitted
+    (fixed in update_po_lines/update_coding_lines above) — this purges any
+    that were already created before that fix. Idempotent: once they're
+    gone, these queries match nothing and this is a no-op."""
+    po_deleted = POBudgetLine.query.filter(
+        db.or_(POBudgetLine.account_string.is_(None), POBudgetLine.account_string == ""),
+        db.or_(POBudgetLine.description.is_(None), POBudgetLine.description == ""),
+        db.or_(POBudgetLine.budgeted_amount.is_(None), POBudgetLine.budgeted_amount == 0),
+    ).delete(synchronize_session=False)
+    coding_deleted = InvoiceCodingLine.query.filter(
+        db.or_(InvoiceCodingLine.description.is_(None), InvoiceCodingLine.description == ""),
+        db.or_(InvoiceCodingLine.amount.is_(None), InvoiceCodingLine.amount == 0),
+    ).delete(synchronize_session=False)
+    if po_deleted or coding_deleted:
+        db.session.commit()
 
 
 _mail_poller_started = False
@@ -402,7 +431,12 @@ def register_routes(app):
             description = request.form.get(f"description_{i}", "").strip()
             amount_raw = _clean_amount(request.form.get(f"amount_{i}", ""))
             line_no_raw = request.form.get(f"line_number_{i}", "").strip()
-            if description or amount_raw or line_no_raw:
+            # The Line # field always has a pre-filled default value even
+            # on a row nobody touched, so it can't count toward "does this
+            # row have anything in it" — only description/amount can.
+            # Otherwise every blank template row gets saved as a real,
+            # empty coding line on every auto-save.
+            if description or amount_raw:
                 line_no = int(line_no_raw) if line_no_raw else (len(lines) + 1)
                 lines.append(
                     {
@@ -492,6 +526,9 @@ def register_routes(app):
     @app.route("/purchase-orders")
     def purchase_orders():
         pos = PurchaseOrder.query.order_by(PurchaseOrder.uploaded_at.desc()).all()
+        real_line_counts = {
+            po.id: sum(1 for pl in po.budget_lines if _has_budget_data(pl)) for po in pos
+        }
 
         # Fiscal-year POs still carrying unspent budget as the fiscal year
         # winds down — a heads-up to spend it down or carry it forward
@@ -513,7 +550,7 @@ def register_routes(app):
 
         return render_template(
             "purchase_orders.html", pos=pos, expiring_pos=expiring_pos,
-            fy_end=fy_end, days_left=days_left,
+            fy_end=fy_end, days_left=days_left, real_line_counts=real_line_counts,
         )
 
     @app.route("/purchase-orders/create", methods=["POST"])
@@ -564,6 +601,8 @@ def register_routes(app):
         total_budgeted = Decimal("0")
         total_spent = Decimal("0")
         for pl in po.budget_lines:
+            if not _has_budget_data(pl):
+                continue
             budgeted = pl.budgeted_amount or Decimal("0")
             remaining = remaining_budget(pl)
             spent = budgeted - remaining
@@ -606,11 +645,12 @@ def register_routes(app):
             amount_raw = _clean_amount(request.form.get(f"amount_{i}", ""))
             line_no_raw = request.form.get(f"line_number_{i}", "").strip()
 
-            # A row counts as "used" if it has a line number, an account
-            # string, a description, or an amount — the account string
-            # alone is never required (Munis-imported lines don't have
-            # one until a PM codes them, and that shouldn't erase the row).
-            if account or description or amount_raw or line_no_raw:
+            # A row counts as "used" if it has an account string, a
+            # description, or an amount — never the line number alone,
+            # since that field always has a pre-filled default value even
+            # on a row nobody touched (it would otherwise save every blank
+            # template row as a real, empty budget line on every save).
+            if account or description or amount_raw:
                 line_no = int(line_no_raw) if line_no_raw else (i + 1)
                 submitted_numbers.add(line_no)
                 existing = existing_by_number.get(line_no)

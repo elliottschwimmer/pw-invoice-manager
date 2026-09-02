@@ -109,8 +109,8 @@
               One-time
             {% endif %}
           </td>
-          <td>{{ po.budget_lines|length }}</td>
-          <td>{{ po.uploaded_at|pacific("%m/%d/%Y") }}</td>
+          <td>{{ real_line_counts[po.id] }}</td>
+          <td>{{ po.uploaded_at|pacific }}</td>
         </tr>
         {% else %}
         <tr><td colspan="6" class="muted" style="padding:24px;">No POs added yet.</td></tr>
