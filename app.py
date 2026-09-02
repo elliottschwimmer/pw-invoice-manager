@@ -15,7 +15,7 @@ from models import (
 )
 from intake import (
     ingest_new_invoices, create_invoice_from_upload, assign_invoice, approve_invoice,
-    mark_entered_in_munis, send_pm_reminder, correct_vendor, link_purchase_order,
+    unapprove_invoice, mark_entered_in_munis, send_pm_reminder, correct_vendor, link_purchase_order,
     update_coding_lines as _apply_coding_lines,
 )
 from pdf_export import generate_final_pdf, generate_stamped_pdf
@@ -265,6 +265,14 @@ def register_routes(app):
             )
         else:
             flash("Invoice approved and Administrator notified")
+        return redirect(url_for("invoice_detail", invoice_id=invoice_id))
+
+    @app.route("/invoices/<int:invoice_id>/unapprove", methods=["POST"])
+    def unapprove(invoice_id):
+        invoice = Invoice.query.get_or_404(invoice_id)
+        note = request.form.get("note", "")
+        unapprove_invoice(invoice, note=note)
+        flash("Invoice pulled back to Pending PM Approval — budget coding is open for corrections again")
         return redirect(url_for("invoice_detail", invoice_id=invoice_id))
 
     @app.route("/invoices/<int:invoice_id>/mark-entered", methods=["POST"])

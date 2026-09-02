@@ -261,6 +261,11 @@
             <textarea name="note" rows="2"></textarea>
             <button class="btn" type="submit" style="margin-top:10px;">Approve invoice</button>
           </form>
+        {% elif invoice.status == "approved" %}
+          <form method="post" action="{{ url_for('unapprove', invoice_id=invoice.id) }}" style="margin-top:14px; border-top: 1px solid var(--border); padding-top: 14px;">
+            <p class="muted" style="margin-top:0;">Already approved. Pull it back if a PO line turns out not to have enough budget, or the coding needs to change — this re-opens the budget coding above and clears the approval; nothing else is lost.</p>
+            <button class="btn btn-secondary" type="submit">Pull back for corrections</button>
+          </form>
         {% endif %}
       </div>
 

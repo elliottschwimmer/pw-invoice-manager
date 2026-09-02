@@ -279,6 +279,18 @@ def approve_invoice(invoice: Invoice, note: str = ""):
     _send_admin_ready_notification(invoice)
 
 
+def unapprove_invoice(invoice: Invoice, note: str = ""):
+    """Pulls an approved invoice back to Pending PM Approval so its budget
+    coding can be corrected — most commonly because a PO line turned out
+    not to have enough budget left to actually cover it. The coding lines
+    themselves aren't touched; only the approval is undone."""
+    invoice.status = "pending_pm_approval"
+    invoice.pm_approved_at = None
+    invoice.pm_approval_note = None
+    _log_event(invoice, "unapproved", note or "Pulled back from Approved for corrections")
+    db.session.commit()
+
+
 def mark_entered_in_munis(invoice: Invoice, entered_by: str):
     invoice.status = "entered_in_munis"
     invoice.munis_entered_at = datetime.utcnow()
