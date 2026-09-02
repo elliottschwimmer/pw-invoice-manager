@@ -19,11 +19,52 @@
       <p class="muted">Upload a PO export from Tyler Munis (.xlsx) — vendor, description, and each line's description, unit price, liquidated amount, and balance are pulled in automatically. Account strings still need to be coded by hand, since Munis exports don't include them. Re-importing the same PO # refreshes these figures without losing any coding you've already entered.</p>
       <form method="post" action="{{ url_for('import_munis') }}" enctype="multipart/form-data">
         <label>Munis PO Export (.xlsx)</label>
-        <input type="file" name="munis_file" accept=".xlsx" required>
+        <div class="dropzone" id="munis-dropzone">
+          <p class="dropzone-text">Drag &amp; drop a Munis .xlsx export here, or click to choose a file</p>
+          <p class="dropzone-filename muted" id="munis-dropzone-filename"></p>
+          <input type="file" name="munis_file" id="munis-file-input" accept=".xlsx" required style="display:none;">
+        </div>
         <label>Imported by</label>
         <input type="text" name="uploaded_by" placeholder="Your name">
         <button class="btn" type="submit" style="margin-top:14px;">Import</button>
       </form>
+      <script>
+        (function () {
+          const zone = document.getElementById('munis-dropzone');
+          const input = document.getElementById('munis-file-input');
+          const filenameEl = document.getElementById('munis-dropzone-filename');
+          if (!zone || !input) return;
+
+          function showFilename() {
+            filenameEl.textContent = input.files.length ? input.files[0].name : '';
+          }
+
+          zone.addEventListener('click', function () { input.click(); });
+          input.addEventListener('change', showFilename);
+
+          ['dragenter', 'dragover'].forEach(function (evt) {
+            zone.addEventListener(evt, function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              zone.classList.add('dropzone-active');
+            });
+          });
+          ['dragleave', 'drop'].forEach(function (evt) {
+            zone.addEventListener(evt, function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              zone.classList.remove('dropzone-active');
+            });
+          });
+          zone.addEventListener('drop', function (e) {
+            const files = e.dataTransfer.files;
+            if (files && files.length) {
+              input.files = files;
+              showFilename();
+            }
+          });
+        })();
+      </script>
     </div>
 
     <div class="card">
