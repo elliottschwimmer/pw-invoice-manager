@@ -22,21 +22,113 @@
   </div>
   {% endif %}
 
+  <p class="muted">Rename a vendor by editing its name and clicking away. Check two or more vendors to merge them. A vendor with no invoices or POs can be deleted outright — anything else has to be merged instead.</p>
+
   <div class="card" style="padding:0;">
+    <div style="overflow-x:auto;">
     <table>
-      <thead><tr><th>Vendor</th><th>Invoices</th><th>Open</th><th>Total Amount</th></tr></thead>
+      <thead><tr><th style="width:4%;"></th><th>Vendor</th><th style="width:10%;">Invoices</th><th style="width:8%;">Open</th><th style="width:14%;">Total Amount</th><th style="width:10%;"></th></tr></thead>
       <tbody>
         {% for r in rows %}
-        <tr class="clickable-row" data-href="{{ url_for('vendor_detail', vendor_id=r.vendor.id) }}">
-          <td><a class="row-link" href="{{ url_for('vendor_detail', vendor_id=r.vendor.id) }}">{{ r.vendor.name }}</a></td>
+        <tr>
+          <td><input type="checkbox" class="vendor-select" value="{{ r.vendor.id }}" data-name="{{ r.vendor.name }}" style="width:auto;"></td>
+          <td>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <input type="text" class="vendor-rename-input" data-vendor-id="{{ r.vendor.id }}" value="{{ r.vendor.name }}" style="min-width:220px;">
+              <a class="row-link" href="{{ url_for('vendor_detail', vendor_id=r.vendor.id) }}" style="font-size:12px; white-space:nowrap;">View invoices</a>
+            </div>
+          </td>
           <td>{{ r.invoice_count }}</td>
           <td>{{ r.open_count }}</td>
           <td>{{ r.total_amount|money }}</td>
+          <td>
+            {% if r.invoice_count == 0 and r.po_count == 0 %}
+            <form method="post" action="{{ url_for('delete_vendor', vendor_id=r.vendor.id) }}" onsubmit="return confirm('Delete {{ r.vendor.name|e }}? This can\'t be undone.');">
+              <button class="btn btn-secondary" type="submit" style="font-size:12px; padding:4px 10px;">Delete</button>
+            </form>
+            {% endif %}
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="4" class="muted" style="padding:24px;">No vendors yet — vendors are created automatically as invoices come in.</td></tr>
+        <tr><td colspan="6" class="muted" style="padding:24px;">No vendors yet — vendors are created automatically as invoices come in.</td></tr>
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
+
+  <div class="card" id="vendor-merge-bar" style="display:none; position:sticky; bottom:16px; border-color:var(--berkeley-red);">
+    <form method="post" action="{{ url_for('merge_vendors') }}" id="vendor-merge-form">
+      <div id="vendor-merge-hidden-inputs"></div>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span id="vendor-merge-count" style="font-weight:600; font-size:14px;"></span>
+        <label style="margin:0; font-weight:600; font-size:13px;">Keep:</label>
+        <select name="keep_vendor_id" id="vendor-merge-keep-select" required style="width:auto;"></select>
+        <button class="btn" type="submit">Merge Selected</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    (function () {
+      const bar = document.getElementById('vendor-merge-bar');
+      const keepSelect = document.getElementById('vendor-merge-keep-select');
+      const hiddenContainer = document.getElementById('vendor-merge-hidden-inputs');
+      const countEl = document.getElementById('vendor-merge-count');
+
+      function refresh() {
+        const checked = Array.from(document.querySelectorAll('.vendor-select')).filter(c => c.checked);
+        if (checked.length < 2) {
+          bar.style.display = 'none';
+          return;
+        }
+        bar.style.display = 'block';
+        countEl.textContent = checked.length + ' vendors selected';
+        const previousKeep = keepSelect.value;
+        keepSelect.innerHTML = '';
+        checked.forEach(function (c) {
+          const opt = document.createElement('option');
+          opt.value = c.value;
+          opt.textContent = c.dataset.name;
+          keepSelect.appendChild(opt);
+        });
+        if (checked.some(c => c.value === previousKeep)) keepSelect.value = previousKeep;
+        hiddenContainer.innerHTML = '';
+        checked.forEach(function (c) {
+          const hidden = document.createElement('input');
+          hidden.type = 'hidden';
+          hidden.name = 'merge_vendor_ids';
+          hidden.value = c.value;
+          hiddenContainer.appendChild(hidden);
+        });
+      }
+
+      document.addEventListener('change', function (e) {
+        if (e.target.matches('.vendor-select')) refresh();
+      });
+
+      // Rename saves in the background on blur, same pattern as the
+      // invoice budget-coding auto-save — no page reload needed.
+      document.addEventListener('focusout', function (e) {
+        if (!e.target.matches('.vendor-rename-input')) return;
+        const input = e.target;
+        const name = input.value.trim();
+        if (!name) { input.value = input.defaultValue; return; }
+        if (name === input.defaultValue) return;
+        fetch('/vendors/' + input.dataset.vendorId + '/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+          body: 'name=' + encodeURIComponent(name),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.ok) {
+              input.defaultValue = data.name;
+              const checkbox = document.querySelector('.vendor-select[value="' + input.dataset.vendorId + '"]');
+              if (checkbox) checkbox.dataset.name = data.name;
+            }
+          });
+      });
+    })();
+  </script>
 {% endblock %}

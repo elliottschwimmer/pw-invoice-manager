@@ -102,12 +102,15 @@ def register_routes(app):
         status_filter = request.args.get("status")
         urgency_filter = request.args.get("urgency")
         pm_filter = request.args.get("pm_id", type=int)
+        vendor_filter = request.args.get("vendor_id", type=int)
 
         query = Invoice.query
         if status_filter:
             query = query.filter_by(status=status_filter)
         if pm_filter:
             query = query.filter_by(pm_id=pm_filter)
+        if vendor_filter:
+            query = query.filter_by(vendor_id=vendor_filter)
         invoices = query.all()
 
         # Urgency counts reflect the current status filter (if any) so the
@@ -129,12 +132,13 @@ def register_routes(app):
             -(inv.received_at.timestamp() if inv.received_at else 0),
         ))
 
-        # Scoped to the selected PM (if any) so the status chips reflect
-        # just their own invoices — a PM picking their name from the filter
-        # should see their own counts, not the department-wide ones.
+        # Scoped to the selected PM/vendor (if any) so the status chips
+        # reflect just that filtered set, not the department-wide totals.
         counts_query = Invoice.query
         if pm_filter:
             counts_query = counts_query.filter_by(pm_id=pm_filter)
+        if vendor_filter:
+            counts_query = counts_query.filter_by(vendor_id=vendor_filter)
         counts = {
             "all": counts_query.count(),
             "needs_assignment": counts_query.filter_by(status="needs_assignment").count(),
@@ -149,12 +153,14 @@ def register_routes(app):
         ]
 
         pms = Staff.query.filter_by(role="pm").order_by(Staff.name).all()
+        vendors_for_filter = Vendor.query.order_by(Vendor.name).all()
 
         return render_template(
             "dashboard.html", invoices=invoices, counts=counts, active_status=status_filter,
             urgency_counts=urgency_counts, active_urgency=urgency_filter,
             pos_needing_fy_review=pos_needing_fy_review,
             pms=pms, active_pm=pm_filter,
+            vendors_for_filter=vendors_for_filter, active_vendor=vendor_filter,
         )
 
     @app.route("/invoices/<int:invoice_id>")
@@ -633,6 +639,7 @@ def register_routes(app):
                 "invoice_count": len(invoices),
                 "total_amount": sum((inv.amount or 0) for inv in invoices),
                 "open_count": sum(1 for inv in invoices if inv.status != "entered_in_munis"),
+                "po_count": len(v.purchase_orders),
             })
         rows.sort(key=lambda r: r["vendor"].name.lower())
 
@@ -671,6 +678,37 @@ def register_routes(app):
             db.session.delete(dup)
         db.session.commit()
         flash(f"Merged {', '.join(merged_names)} into {keep.name}")
+        return redirect(url_for("vendors_list"))
+
+    @app.route("/vendors/<int:vendor_id>/rename", methods=["POST"])
+    def rename_vendor(vendor_id):
+        vendor = Vendor.query.get_or_404(vendor_id)
+        new_name = request.form.get("name", "").strip()
+        if new_name:
+            vendor.name = new_name
+            db.session.commit()
+            message = "Vendor renamed"
+            ok = True
+        else:
+            message = "Vendor name can't be blank"
+            ok = False
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return {"ok": ok, "message": message, "name": vendor.name}
+        flash(message)
+        return redirect(url_for("vendors_list"))
+
+    @app.route("/vendors/<int:vendor_id>/delete", methods=["POST"])
+    def delete_vendor(vendor_id):
+        vendor = Vendor.query.get_or_404(vendor_id)
+        if vendor.invoices or vendor.purchase_orders:
+            flash(f"Can't delete {vendor.name} — it still has invoices or POs. Merge it into another vendor instead.")
+            return redirect(url_for("vendors_list"))
+        VendorAssignment.query.filter_by(vendor_id=vendor.id).delete()
+        name = vendor.name
+        db.session.delete(vendor)
+        db.session.commit()
+        flash(f"Deleted {name}")
         return redirect(url_for("vendors_list"))
 
     @app.route("/vendors/<int:vendor_id>")
