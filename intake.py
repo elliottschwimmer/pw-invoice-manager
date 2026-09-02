@@ -193,7 +193,13 @@ def _match_or_create_vendor(name_guess, sender_email) -> Vendor | None:
 def _apply_po_to_invoice(invoice: Invoice, po: PurchaseOrder, log=True):
     """Links an invoice to a PO and copies its budget lines over (carrying
     line numbers), replacing whatever coding was there before. Used both
-    for auto-matching by PO number and manual PM selection."""
+    for auto-matching by PO number and manual PM selection.
+
+    Amount starts at $0 for every line, not the line's full budgeted
+    amount — a PO line's total budget is usually spread across many
+    invoices over time, so defaulting every line to its full amount the
+    moment a PO is linked is never actually right for this one invoice.
+    "Suggest lines from PO" (or the PM by hand) fills in the real amounts."""
     invoice.purchase_order = po
     invoice.po_number = po.po_number
     InvoiceCodingLine.query.filter_by(invoice_id=invoice.id).delete()
@@ -205,7 +211,7 @@ def _apply_po_to_invoice(invoice: Invoice, po: PurchaseOrder, log=True):
                 line_number=line.line_number,
                 account_string=line.account_string,
                 description=line.description,
-                amount=line.budgeted_amount or 0,
+                amount=0,
                 source="po",
             )
         )
