@@ -1,4 +1,5 @@
 from datetime import datetime, date
+from decimal import Decimal
 from io import BytesIO
 
 from flask import (
@@ -19,7 +20,9 @@ from intake import (
 from pdf_export import generate_final_pdf, generate_stamped_pdf
 from timezone_utils import format_pacific
 from coding_suggest import suggest_coding_lines, remaining_budget
-from fiscal_year_utils import current_fiscal_year_label, po_needs_fiscal_year_review
+from fiscal_year_utils import (
+    current_fiscal_year_label, po_needs_fiscal_year_review, current_fiscal_year_end_date,
+)
 from po_import import import_munis_po
 
 
@@ -89,10 +92,13 @@ def register_routes(app):
     def dashboard():
         status_filter = request.args.get("status")
         urgency_filter = request.args.get("urgency")
+        pm_filter = request.args.get("pm_id", type=int)
 
         query = Invoice.query
         if status_filter:
             query = query.filter_by(status=status_filter)
+        if pm_filter:
+            query = query.filter_by(pm_id=pm_filter)
         invoices = query.all()
 
         # Urgency counts reflect the current status filter (if any) so the
@@ -114,12 +120,18 @@ def register_routes(app):
             -(inv.received_at.timestamp() if inv.received_at else 0),
         ))
 
+        # Scoped to the selected PM (if any) so the status chips reflect
+        # just their own invoices — a PM picking their name from the filter
+        # should see their own counts, not the department-wide ones.
+        counts_query = Invoice.query
+        if pm_filter:
+            counts_query = counts_query.filter_by(pm_id=pm_filter)
         counts = {
-            "all": Invoice.query.count(),
-            "needs_assignment": Invoice.query.filter_by(status="needs_assignment").count(),
-            "pending_pm_approval": Invoice.query.filter_by(status="pending_pm_approval").count(),
-            "approved": Invoice.query.filter_by(status="approved").count(),
-            "entered_in_munis": Invoice.query.filter_by(status="entered_in_munis").count(),
+            "all": counts_query.count(),
+            "needs_assignment": counts_query.filter_by(status="needs_assignment").count(),
+            "pending_pm_approval": counts_query.filter_by(status="pending_pm_approval").count(),
+            "approved": counts_query.filter_by(status="approved").count(),
+            "entered_in_munis": counts_query.filter_by(status="entered_in_munis").count(),
         }
 
         pos_needing_fy_review = [
@@ -127,10 +139,13 @@ def register_routes(app):
             if po_needs_fiscal_year_review(po)
         ]
 
+        pms = Staff.query.filter_by(role="pm").order_by(Staff.name).all()
+
         return render_template(
             "dashboard.html", invoices=invoices, counts=counts, active_status=status_filter,
             urgency_counts=urgency_counts, active_urgency=urgency_filter,
             pos_needing_fy_review=pos_needing_fy_review,
+            pms=pms, active_pm=pm_filter,
         )
 
     @app.route("/invoices/<int:invoice_id>")
@@ -380,7 +395,29 @@ def register_routes(app):
     @app.route("/purchase-orders")
     def purchase_orders():
         pos = PurchaseOrder.query.order_by(PurchaseOrder.uploaded_at.desc()).all()
-        return render_template("purchase_orders.html", pos=pos)
+
+        # Fiscal-year POs still carrying unspent budget as the fiscal year
+        # winds down — a heads-up to spend it down or carry it forward
+        # deliberately, not just let it lapse unnoticed.
+        fy_end = current_fiscal_year_end_date()
+        days_left = (fy_end - date.today()).days
+        expiring_pos = []
+        if 0 <= days_left <= 60:
+            for po in pos:
+                if po.fiscal_year_scope != "fiscal_year":
+                    continue
+                if po.fiscal_year_label != current_fiscal_year_label():
+                    continue  # already surfaced by the FY-review flag instead
+                po_remaining = sum(
+                    (remaining_budget(pl) for pl in po.budget_lines), Decimal("0")
+                )
+                if po_remaining > 0:
+                    expiring_pos.append({"po": po, "remaining": po_remaining})
+
+        return render_template(
+            "purchase_orders.html", pos=pos, expiring_pos=expiring_pos,
+            fy_end=fy_end, days_left=days_left,
+        )
 
     @app.route("/purchase-orders/create", methods=["POST"])
     def create_po():
@@ -423,7 +460,33 @@ def register_routes(app):
     @app.route("/purchase-orders/<int:po_id>")
     def edit_po(po_id):
         po = PurchaseOrder.query.get_or_404(po_id)
-        return render_template("po_detail.html", po=po)
+
+        # Budget burn-down: how much of each line (and the PO overall) has
+        # actually been spent via coded invoices, vs. what's left.
+        budget_lines_progress = []
+        total_budgeted = Decimal("0")
+        total_spent = Decimal("0")
+        for pl in po.budget_lines:
+            budgeted = pl.budgeted_amount or Decimal("0")
+            remaining = remaining_budget(pl)
+            spent = budgeted - remaining
+            pct = float(spent / budgeted * 100) if budgeted else 0.0
+            pct = max(0.0, min(100.0, pct))
+            budget_lines_progress.append({
+                "line_number": pl.line_number, "budgeted": budgeted,
+                "spent": spent, "remaining": remaining, "pct": pct,
+            })
+            total_budgeted += budgeted
+            total_spent += spent
+        total_remaining = total_budgeted - total_spent
+        total_pct = float(total_spent / total_budgeted * 100) if total_budgeted else 0.0
+        total_pct = max(0.0, min(100.0, total_pct))
+
+        return render_template(
+            "po_detail.html", po=po, budget_lines_progress=budget_lines_progress,
+            total_budgeted=total_budgeted, total_spent=total_spent,
+            total_remaining=total_remaining, total_pct=total_pct,
+        )
 
     @app.route("/purchase-orders/<int:po_id>/vendor", methods=["POST"])
     def update_po_vendor(po_id):

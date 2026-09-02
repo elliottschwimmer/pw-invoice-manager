@@ -43,6 +43,31 @@
     </form>
   </div>
 
+  {% if budget_lines_progress %}
+  <div class="card">
+    <h3>Budget Burn-down</h3>
+    <div class="field-grid" style="margin-bottom:14px;">
+      <div><span class="muted">Total Budgeted</span><div>{{ total_budgeted|money }}</div></div>
+      <div><span class="muted">Total Spent</span><div>{{ total_spent|money }}</div></div>
+      <div><span class="muted">Total Remaining</span><div>{{ total_remaining|money }}</div></div>
+    </div>
+    <div class="budget-progress-bar" style="height:14px; margin-bottom:20px;">
+      <div class="budget-progress-fill{{ ' over-budget' if total_remaining < 0 }}" style="width: {{ total_pct }}%;"></div>
+    </div>
+    {% for line in budget_lines_progress %}
+    <div style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;">
+        <span>Line {{ line.line_number }}</span>
+        <span class="muted">{{ line.spent|money }} of {{ line.budgeted|money }} spent — {{ line.remaining|money }} remaining</span>
+      </div>
+      <div class="budget-progress-bar">
+        <div class="budget-progress-fill{{ ' over-budget' if line.remaining < 0 }}" style="width: {{ line.pct }}%;"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="card">
     <h3>Budget Lines</h3>
     <p class="muted">Enter each budget line's account string, matching the PO's own line numbers (1, 2, 3...). Start typing an account code, fund/division/program name, or object description below to search the chart of accounts.

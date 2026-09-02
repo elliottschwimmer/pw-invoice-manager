@@ -11,20 +11,32 @@
     </div>
   </div>
 
+  <form method="get" style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+    {% if active_status %}<input type="hidden" name="status" value="{{ active_status }}">{% endif %}
+    {% if active_urgency %}<input type="hidden" name="urgency" value="{{ active_urgency }}">{% endif %}
+    <label for="pm-filter" style="margin:0; font-weight:600; font-size:13px;">Project Manager:</label>
+    <select id="pm-filter" name="pm_id" onchange="this.form.submit()" style="width:auto;">
+      <option value="">All PMs</option>
+      {% for pm in pms %}
+        <option value="{{ pm.id }}" {{ 'selected' if active_pm == pm.id }}>{{ pm.name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+
   <div class="filters">
-    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if not active_status }}">All ({{ counts['all'] }})</a>
-    <a href="{{ url_for('dashboard', status='needs_assignment') }}" class="{{ 'active' if active_status=='needs_assignment' }}">Needs Assignment ({{ counts['needs_assignment'] }})</a>
-    <a href="{{ url_for('dashboard', status='pending_pm_approval') }}" class="{{ 'active' if active_status=='pending_pm_approval' }}">Pending PM Approval ({{ counts['pending_pm_approval'] }})</a>
-    <a href="{{ url_for('dashboard', status='approved') }}" class="{{ 'active' if active_status=='approved' }}">Approved ({{ counts['approved'] }})</a>
-    <a href="{{ url_for('dashboard', status='entered_in_munis') }}" class="{{ 'active' if active_status=='entered_in_munis' }}">Entered in Munis ({{ counts['entered_in_munis'] }})</a>
+    <a href="{{ url_for('dashboard', pm_id=active_pm) }}" class="{{ 'active' if not active_status }}">All ({{ counts['all'] }})</a>
+    <a href="{{ url_for('dashboard', status='needs_assignment', pm_id=active_pm) }}" class="{{ 'active' if active_status=='needs_assignment' }}">Needs Assignment ({{ counts['needs_assignment'] }})</a>
+    <a href="{{ url_for('dashboard', status='pending_pm_approval', pm_id=active_pm) }}" class="{{ 'active' if active_status=='pending_pm_approval' }}">Pending PM Approval ({{ counts['pending_pm_approval'] }})</a>
+    <a href="{{ url_for('dashboard', status='approved', pm_id=active_pm) }}" class="{{ 'active' if active_status=='approved' }}">Approved ({{ counts['approved'] }})</a>
+    <a href="{{ url_for('dashboard', status='entered_in_munis', pm_id=active_pm) }}" class="{{ 'active' if active_status=='entered_in_munis' }}">Entered in Munis ({{ counts['entered_in_munis'] }})</a>
   </div>
 
   <div class="filters">
-    <a href="{{ url_for('dashboard', status=active_status) }}" class="{{ 'active' if not active_urgency }}">All Due Dates</a>
-    <a href="{{ url_for('dashboard', status=active_status, urgency='overdue') }}" class="{{ 'active' if active_urgency=='overdue' }}" style="{{ 'color:#a11; border-color:#a11;' if urgency_counts['overdue'] }}">⚠ Past Due ({{ urgency_counts['overdue'] }})</a>
-    <a href="{{ url_for('dashboard', status=active_status, urgency='due_soon') }}" class="{{ 'active' if active_urgency=='due_soon' }}" style="{{ 'color:#96700a; border-color:#96700a;' if urgency_counts['due_soon'] }}">Due Within 7 Days ({{ urgency_counts['due_soon'] }})</a>
-    <a href="{{ url_for('dashboard', status=active_status, urgency='due_later') }}" class="{{ 'active' if active_urgency=='due_later' }}">Due Later ({{ urgency_counts['due_later'] }})</a>
-    <a href="{{ url_for('dashboard', status=active_status, urgency='no_date') }}" class="{{ 'active' if active_urgency=='no_date' }}">No Due Date ({{ urgency_counts['no_date'] }})</a>
+    <a href="{{ url_for('dashboard', status=active_status, pm_id=active_pm) }}" class="{{ 'active' if not active_urgency }}">All Due Dates</a>
+    <a href="{{ url_for('dashboard', status=active_status, urgency='overdue', pm_id=active_pm) }}" class="{{ 'active' if active_urgency=='overdue' }}" style="{{ 'color:#a11; border-color:#a11;' if urgency_counts['overdue'] }}">⚠ Past Due ({{ urgency_counts['overdue'] }})</a>
+    <a href="{{ url_for('dashboard', status=active_status, urgency='due_soon', pm_id=active_pm) }}" class="{{ 'active' if active_urgency=='due_soon' }}" style="{{ 'color:#96700a; border-color:#96700a;' if urgency_counts['due_soon'] }}">Due Within 7 Days ({{ urgency_counts['due_soon'] }})</a>
+    <a href="{{ url_for('dashboard', status=active_status, urgency='due_later', pm_id=active_pm) }}" class="{{ 'active' if active_urgency=='due_later' }}">Due Later ({{ urgency_counts['due_later'] }})</a>
+    <a href="{{ url_for('dashboard', status=active_status, urgency='no_date', pm_id=active_pm) }}" class="{{ 'active' if active_urgency=='no_date' }}">No Due Date ({{ urgency_counts['no_date'] }})</a>
   </div>
 
   <div class="card" style="padding:0;">
