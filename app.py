@@ -61,7 +61,64 @@ def create_app():
 
     register_auth(app)
     register_routes(app)
+    register_mail_poller(app)
     return app
+
+
+_mail_poller_started = False
+
+
+def register_mail_poller(app):
+    """Automatically pulls new invoices out of the mailbox on a timer,
+    instead of only when someone clicks "Check for new invoices". Only
+    runs in EMAIL_MODE=graph with real Graph credentials set — a no-op
+    otherwise (e.g. locally, or before IT has issued credentials).
+
+    Started lazily on the first request rather than here in create_app().
+    gunicorn's --preload loads this module (forking workers off it
+    afterward) before any request arrives; a background thread started
+    at import time doesn't survive that fork, so starting it up front
+    would silently leave no poller running in the actual worker."""
+
+    @app.before_request
+    def _start_once():
+        global _mail_poller_started
+        if _mail_poller_started:
+            return
+        _mail_poller_started = True
+
+        if app.config.get("EMAIL_MODE") != "graph":
+            return
+        if not all([
+            app.config.get("GRAPH_TENANT_ID"),
+            app.config.get("GRAPH_CLIENT_ID"),
+            app.config.get("GRAPH_CLIENT_SECRET"),
+        ]):
+            app.logger.warning("EMAIL_MODE=graph but GRAPH_* credentials aren't fully set — mail poller not started")
+            return
+
+        from apscheduler.schedulers.background import BackgroundScheduler
+
+        def poll():
+            with app.app_context():
+                try:
+                    created = ingest_new_invoices()
+                    if created:
+                        app.logger.info("Mail poller ingested %d new invoice(s)", len(created))
+                except Exception:
+                    app.logger.exception("Mail poller run failed")
+
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(
+            poll, "interval",
+            minutes=app.config.get("MAIL_POLL_INTERVAL_MINUTES", 5),
+            id="mail_poller", next_run_time=datetime.utcnow(),
+        )
+        scheduler.start()
+        app.logger.info(
+            "Mail poller started — checking %s every %s minute(s)",
+            app.config.get("INTAKE_MAILBOX"), app.config.get("MAIL_POLL_INTERVAL_MINUTES", 5),
+        )
 
 
 def register_auth(app):

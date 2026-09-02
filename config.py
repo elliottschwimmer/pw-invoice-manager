@@ -44,6 +44,11 @@ class Config:
     GRAPH_CLIENT_ID = os.environ.get("GRAPH_CLIENT_ID")
     GRAPH_CLIENT_SECRET = os.environ.get("GRAPH_CLIENT_SECRET")
 
+    # How often the background poller checks the mailbox for new invoices,
+    # in minutes. Only runs when EMAIL_MODE=graph and all three GRAPH_*
+    # values above are set.
+    MAIL_POLL_INTERVAL_MINUTES = int(os.environ.get("MAIL_POLL_INTERVAL_MINUTES", "5"))
+
     # Used to build links in outgoing emails (e.g. "review this invoice at
     # ..."). Update once the app has a real hostname (Railway, IT server, etc).
     BASE_URL = os.environ.get("BASE_URL", "http://localhost:5051")
