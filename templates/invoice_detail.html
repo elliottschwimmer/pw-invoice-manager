@@ -22,6 +22,14 @@
         <div><span class="muted">Due Date</span><div>{{ invoice.due_date.strftime("%m/%d/%Y") if invoice.due_date else "not set" }}</div></div>
       </div>
 
+      <form method="post" action="{{ url_for('set_invoice_number', invoice_id=invoice.id) }}" style="margin-top:12px;">
+        <label>Invoice Number{% if not invoice.invoice_number %} — not detected, enter it here{% else %} — wrong? Correct it here{% endif %}</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" name="invoice_number" value="{{ invoice.invoice_number or '' }}" placeholder="Invoice number">
+          <button class="btn btn-secondary" type="submit">Save</button>
+        </div>
+      </form>
+
       <form method="post" action="{{ url_for('update_vendor', invoice_id=invoice.id) }}" style="margin-top:12px;">
         <label>Vendor — wrong or missing? Correct it here</label>
         <div style="display:flex; gap:8px;">

@@ -387,6 +387,14 @@ def register_routes(app):
         flash("Invoice amount updated")
         return redirect(url_for("invoice_detail", invoice_id=invoice_id))
 
+    @app.route("/invoices/<int:invoice_id>/invoice-number", methods=["POST"])
+    def set_invoice_number(invoice_id):
+        invoice = Invoice.query.get_or_404(invoice_id)
+        invoice.invoice_number = request.form.get("invoice_number", "").strip() or None
+        db.session.commit()
+        flash("Invoice number updated")
+        return redirect(url_for("invoice_detail", invoice_id=invoice_id))
+
     @app.route("/invoices/<int:invoice_id>/suggest-coding", methods=["POST"])
     def suggest_coding(invoice_id):
         invoice = Invoice.query.get_or_404(invoice_id)
