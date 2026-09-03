@@ -4,7 +4,12 @@
   <a href="{{ url_for('dashboard') }}" class="muted">&larr; Back to dashboard</a>
   <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
     <h2>{{ invoice.vendor.name if invoice.vendor else invoice.vendor_name_raw or "Unknown Vendor" }}</h2>
-    <span class="badge badge-{{ invoice.status }}">{{ invoice.status_label }}</span>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span class="badge badge-{{ invoice.status }}">{{ invoice.status_label }}</span>
+      <form method="post" action="{{ url_for('delete_invoice', invoice_id=invoice.id) }}" onsubmit="return confirm('Delete this invoice permanently? This can\'t be undone.');">
+        <button class="btn btn-secondary" type="submit" style="font-size:12px; padding:5px 12px; color:var(--berkeley-red); border-color:var(--berkeley-red);">Delete invoice</button>
+      </form>
+    </div>
   </div>
   {% if invoice.split_from_invoice_id %}
     <p class="muted">📄 Split from the same PDF as <a class="row-link" href="{{ url_for('invoice_detail', invoice_id=invoice.split_from_invoice_id) }}">invoice #{{ invoice.split_from_invoice_id }}</a> — multiple invoices were detected in one upload.</p>

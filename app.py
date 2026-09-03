@@ -371,6 +371,19 @@ def register_routes(app):
         flash("Marked entered in Munis")
         return redirect(url_for("invoice_detail", invoice_id=invoice_id))
 
+    @app.route("/invoices/<int:invoice_id>/delete", methods=["POST"])
+    def delete_invoice(invoice_id):
+        invoice = Invoice.query.get_or_404(invoice_id)
+        label = invoice.invoice_number or f"#{invoice.id}"
+        # If this was the "original" of a multi-invoice PDF split, other
+        # invoices point back to it — clear that link rather than leaving
+        # a dangling reference (or failing on the foreign key).
+        Invoice.query.filter_by(split_from_invoice_id=invoice.id).update({"split_from_invoice_id": None})
+        db.session.delete(invoice)
+        db.session.commit()
+        flash(f"Deleted invoice {label}")
+        return redirect(url_for("dashboard"))
+
     @app.route("/invoices/<int:invoice_id>/due-date", methods=["POST"])
     def set_due_date(invoice_id):
         invoice = Invoice.query.get_or_404(invoice_id)
