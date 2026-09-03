@@ -12,6 +12,21 @@ from reportlab.pdfgen import canvas
 from timezone_utils import format_pacific
 
 
+def _current_account_strings(invoice) -> dict:
+    """Account string per line_number, resolved live from the linked PO's
+    budget lines rather than trusting what's stored on the invoice's own
+    coding lines — that copy is only made at link/save time, so if the PO's
+    account string was entered or corrected afterward, the invoice would
+    otherwise keep exporting the old (often blank) value forever."""
+    if not invoice.purchase_order:
+        return {}
+    return {
+        pl.line_number: pl.account_string
+        for pl in invoice.purchase_order.budget_lines
+        if pl.account_string
+    }
+
+
 def generate_final_pdf(invoice) -> bytes:
     cover = _build_cover_page(invoice)
     return _merge_pdfs(cover, invoice.data)
@@ -57,10 +72,12 @@ def _build_stamp_overlay(invoice, page_width: float, page_height: float) -> byte
 
     # Coding lines, bottom-up (excludes the approval — that gets its own
     # signature block below, not just a plain text line).
+    current_accounts = _current_account_strings(invoice)
     coded_lines = [cl for cl in invoice.coding_lines if cl.amount and float(cl.amount) > 0]
     coding_lines_bottom_up = []
     for coding_line in reversed(coded_lines):
-        account = f" {coding_line.account_string}" if coding_line.account_string else ""
+        account_string = current_accounts.get(coding_line.line_number) or coding_line.account_string
+        account = f" {account_string}" if account_string else ""
         coding_lines_bottom_up.append(
             f"  Line {coding_line.line_number or ''}:{account} — {_money(coding_line.amount)}"
         )
@@ -153,6 +170,7 @@ def _build_cover_page(invoice) -> bytes:
 
     total = 0
     c.setFont("Helvetica", 9)
+    current_accounts = _current_account_strings(invoice)
     coded_lines = [cl for cl in invoice.coding_lines if cl.amount and float(cl.amount) > 0]
     for coding_line in coded_lines:
         if y < margin + 40:
@@ -160,7 +178,8 @@ def _build_cover_page(invoice) -> bytes:
             y = height - margin
             c.setFont("Helvetica", 9)
         c.drawString(margin, y, str(coding_line.line_number or ""))
-        account = (coding_line.account_string or "")[:60]
+        account_string = current_accounts.get(coding_line.line_number) or coding_line.account_string
+        account = (account_string or "")[:60]
         c.drawString(margin + 0.5 * inch, y, account)
         amt = float(coding_line.amount or 0)
         total += amt
