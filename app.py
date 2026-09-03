@@ -1,3 +1,5 @@
+import base64
+import hmac
 import re
 from datetime import datetime, date
 from decimal import Decimal
@@ -14,7 +16,7 @@ from models import (
     InvoiceCodingLine, OutgoingEmailLog, ActiveAccount,
 )
 from intake import (
-    ingest_new_invoices, create_invoice_from_upload, assign_invoice, approve_invoice,
+    ingest_new_invoices, ingest_one_message, create_invoice_from_upload, assign_invoice, approve_invoice,
     unapprove_invoice, mark_entered_in_munis, send_pm_reminder, correct_vendor, link_purchase_order,
     update_coding_lines as _apply_coding_lines,
 )
@@ -160,7 +162,7 @@ def register_auth(app):
         password = app.config.get("APP_PASSWORD")
         if not password:
             return None
-        if request.endpoint in ("login", "static"):
+        if request.endpoint in ("login", "static", "intake_webhook"):
             return None
         if session.get("authed"):
             return None
@@ -480,6 +482,49 @@ def register_routes(app):
         created = ingest_new_invoices()
         flash(f"Ingested {len(created)} new invoice(s)")
         return redirect(url_for("dashboard"))
+
+    @app.route("/api/intake/webhook", methods=["POST"])
+    def intake_webhook():
+        """Interim automatic-ingestion path for a Power Automate Flow to
+        call directly — a workaround for while the Graph API app
+        registration is pending IT approval. Expects a JSON body built
+        from a "Get attachment" action's output: filename + content_base64
+        (that action's ContentBytes is already base64), plus optional
+        sender_email/subject/cc_emails/message_id for context. Auth is a
+        shared secret, not a session — this route is exempted from the
+        login gate above."""
+        expected = app.config.get("INTAKE_WEBHOOK_SECRET")
+        if not expected:
+            return jsonify({"error": "webhook not configured"}), 503
+
+        provided = (
+            request.headers.get("X-Webhook-Secret")
+            or request.args.get("secret")
+            or (request.get_json(silent=True) or {}).get("secret")
+        )
+        if not provided or not hmac.compare_digest(str(provided), expected):
+            return jsonify({"error": "unauthorized"}), 401
+
+        data = request.get_json(silent=True) or {}
+        filename = data.get("filename") or "invoice.pdf"
+        content_b64 = data.get("content_base64") or data.get("contentBytes")
+        if not content_b64:
+            return jsonify({"error": "content_base64 is required"}), 400
+        try:
+            pdf_bytes = base64.b64decode(content_b64)
+        except Exception:
+            return jsonify({"error": "content_base64 is not valid base64"}), 400
+
+        msg = {
+            "data": pdf_bytes,
+            "filename": filename,
+            "sender_email": data.get("sender_email") or data.get("from"),
+            "subject": data.get("subject") or f"Invoice — {filename}",
+            "cc_emails": data.get("cc_emails", ""),
+            "message_id": data.get("message_id"),
+        }
+        created = ingest_one_message(msg)
+        return jsonify({"created": len(created), "invoice_ids": [inv.id for inv in created]}), 200
 
     @app.route("/invoices/upload", methods=["GET", "POST"])
     def upload_invoice():

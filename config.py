@@ -49,6 +49,12 @@ class Config:
     # values above are set.
     MAIL_POLL_INTERVAL_MINUTES = int(os.environ.get("MAIL_POLL_INTERVAL_MINUTES", "5"))
 
+    # Shared secret for the Power Automate intake webhook (/api/intake/
+    # webhook) — an interim workaround for automatic ingestion while the
+    # Graph API app registration is pending. Unset by default, which
+    # disables the webhook entirely (it always returns 401).
+    INTAKE_WEBHOOK_SECRET = os.environ.get("INTAKE_WEBHOOK_SECRET")
+
     # Used to build links in outgoing emails (e.g. "review this invoice at
     # ..."). Update once the app has a real hostname (Railway, IT server, etc).
     BASE_URL = os.environ.get("BASE_URL", "http://localhost:5051")

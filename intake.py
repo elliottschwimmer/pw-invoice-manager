@@ -42,6 +42,17 @@ def ingest_new_invoices():
     return created
 
 
+def ingest_one_message(msg: dict) -> list[Invoice]:
+    """Same per-message ingestion the mailbox poller uses, exposed for
+    other intake paths that already have one message's data in hand
+    rather than a whole inbox to poll — e.g. the Power Automate webhook,
+    an interim workaround for automatic ingestion while the Graph API app
+    registration is pending IT approval. `msg` needs at least `data`
+    (PDF bytes) and `filename`; `sender_email`, `subject`, `cc_emails`,
+    and `message_id` are optional context."""
+    return _ingest_one_pdf(msg)
+
+
 def create_invoice_from_upload(data: bytes, filename: str, uploaded_by: str = "") -> list[Invoice]:
     """Manual upload path — no mailbox involved. Used for solo use before
     the shared inbox is connected: drop a PDF straight into the app."""
