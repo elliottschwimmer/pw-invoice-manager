@@ -80,4 +80,69 @@
       </tbody>
     </table>
   </div>
+
+  <div class="page-drop-overlay" id="page-drop-overlay">
+    <div class="page-drop-overlay-inner"><p id="page-drop-overlay-text" style="margin:0;">Drop to upload invoice</p></div>
+  </div>
+
+  <script>
+    (function () {
+      const overlay = document.getElementById('page-drop-overlay');
+      const overlayText = document.getElementById('page-drop-overlay-text');
+      let dragCounter = 0;
+
+      function hasFiles(e) {
+        return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+      }
+
+      window.addEventListener('dragenter', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragCounter++;
+        overlay.classList.add('active');
+      });
+      window.addEventListener('dragover', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+      });
+      window.addEventListener('dragleave', function (e) {
+        if (!hasFiles(e)) return;
+        dragCounter = Math.max(0, dragCounter - 1);
+        if (dragCounter === 0) overlay.classList.remove('active');
+      });
+      window.addEventListener('drop', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragCounter = 0;
+        const files = Array.from(e.dataTransfer.files).filter(function (f) {
+          return f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+        });
+        if (!files.length) {
+          overlay.classList.remove('active');
+          return;
+        }
+        uploadFiles(files);
+      });
+
+      async function uploadFiles(files) {
+        overlayText.textContent = 'Uploading ' + files.length + ' invoice' + (files.length > 1 ? 's' : '') + '…';
+        let lastUrl = null;
+        for (const file of files) {
+          const formData = new FormData();
+          formData.append('invoice_file', file);
+          try {
+            const resp = await fetch('{{ url_for("upload_invoice") }}', { method: 'POST', body: formData });
+            lastUrl = resp.url;
+          } catch (err) {
+            // fall through — reload the dashboard either way below
+          }
+        }
+        if (files.length === 1 && lastUrl) {
+          window.location = lastUrl;
+        } else {
+          window.location.reload();
+        }
+      }
+    })();
+  </script>
 {% endblock %}

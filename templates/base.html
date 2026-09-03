@@ -157,6 +157,20 @@
       font-size: 16px; line-height: 1; cursor: pointer;
     }
     button.remove-coding-row:hover { border-color: var(--berkeley-red); color: var(--berkeley-red); background: #fdf1e9; }
+
+    /* Whole-page drag-and-drop upload target (dashboard). */
+    .page-drop-overlay {
+      position: fixed; inset: 0; z-index: 999;
+      background: rgba(200, 16, 46, 0.08);
+      display: none; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .page-drop-overlay.active { display: flex; }
+    .page-drop-overlay-inner {
+      background: var(--card-bg); border: 3px dashed var(--berkeley-red); border-radius: 12px;
+      padding: 48px 72px; font-size: 18px; font-weight: 600; color: var(--berkeley-red);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+    }
   </style>
 </head>
 <body>
