@@ -500,26 +500,29 @@ def register_routes(app):
     def intake_webhook():
         """Interim automatic-ingestion path for a Power Automate Flow to
         call directly — a workaround for while the Graph API app
-        registration is pending IT approval. Expects a JSON body built
-        from a "Get attachment" action's output: filename + content_base64
-        (that action's ContentBytes is already base64), plus optional
-        sender_email/subject/cc_emails/message_id for context. Auth is a
-        shared secret, not a session — this route is exempted from the
-        login gate above."""
+        registration is pending IT approval. Accepts either a purpose-built
+        JSON body (filename/content_base64/sender_email/subject) or, more
+        robustly, a raw Microsoft Graph fileAttachment object passed
+        straight through from the Flow's "Apply to each" item — name/
+        contentBytes/contentType — since that avoids the Flow author having
+        to hand-build JSON around a very large base64 value. In the latter
+        case sender_email/subject/secret come from headers instead, since
+        the body is just the attachment object. Auth is a shared secret,
+        not a session — this route is exempted from the login gate above."""
         expected = app.config.get("INTAKE_WEBHOOK_SECRET")
         if not expected:
             return jsonify({"error": "webhook not configured"}), 503
 
+        data = request.get_json(silent=True) or {}
         provided = (
             request.headers.get("X-Webhook-Secret")
             or request.args.get("secret")
-            or (request.get_json(silent=True) or {}).get("secret")
+            or data.get("secret")
         )
         if not provided or not hmac.compare_digest(str(provided), expected):
             return jsonify({"error": "unauthorized"}), 401
 
-        data = request.get_json(silent=True) or {}
-        filename = data.get("filename") or "invoice.pdf"
+        filename = data.get("filename") or data.get("name") or "invoice.pdf"
         content_b64 = data.get("content_base64") or data.get("contentBytes")
         if not content_b64:
             return jsonify({"error": "content_base64 is required"}), 400
@@ -528,11 +531,25 @@ def register_routes(app):
         except Exception:
             return jsonify({"error": "content_base64 is not valid base64"}), 400
 
+        # Only PDFs are invoices — an email's inline logo, signature image,
+        # or other non-PDF attachment gets sent through the same "for each
+        # attachment" loop, so skip anything that clearly isn't a PDF
+        # rather than creating garbage invoices from it. Not an error —
+        # Power Automate would otherwise mark the run as failed.
+        content_type = (data.get("contentType") or data.get("content_type") or "").lower()
+        looks_like_pdf = (
+            filename.lower().endswith(".pdf")
+            or content_type == "application/pdf"
+            or pdf_bytes[:5] == b"%PDF-"
+        )
+        if not looks_like_pdf:
+            return jsonify({"created": 0, "skipped": filename, "reason": "not a PDF"}), 200
+
         msg = {
             "data": pdf_bytes,
             "filename": filename,
-            "sender_email": data.get("sender_email") or data.get("from"),
-            "subject": data.get("subject") or f"Invoice — {filename}",
+            "sender_email": data.get("sender_email") or data.get("from") or request.headers.get("X-Sender-Email"),
+            "subject": data.get("subject") or request.headers.get("X-Subject") or f"Invoice — {filename}",
             "cc_emails": data.get("cc_emails", ""),
             "message_id": data.get("message_id"),
         }
