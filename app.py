@@ -496,27 +496,6 @@ def register_routes(app):
         flash(f"Ingested {len(created)} new invoice(s)")
         return redirect(url_for("dashboard"))
 
-    @app.route("/api/debug/ocr-check")
-    def debug_ocr_check():
-        """Temporary diagnostic — reports whether the OCR stack (PyMuPDF,
-        pytesseract, the tesseract binary itself) is actually usable in
-        this deployment, without needing shell/log access. Remove once OCR
-        is confirmed working."""
-        result = {}
-        try:
-            import fitz
-            result["fitz_version"] = fitz.__doc__ or "imported ok"
-        except Exception as e:
-            result["fitz_error"] = f"{type(e).__name__}: {e}"
-        try:
-            import pytesseract
-            result["tesseract_version"] = str(pytesseract.get_tesseract_version())
-        except Exception as e:
-            result["pytesseract_error"] = f"{type(e).__name__}: {e}"
-        import shutil
-        result["tesseract_on_path"] = shutil.which("tesseract")
-        return jsonify(result)
-
     @app.route("/api/intake/webhook", methods=["POST"])
     def intake_webhook():
         """Interim automatic-ingestion path for a Power Automate Flow to
