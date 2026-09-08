@@ -1,0 +1,6 @@
+# pytesseract is a Python wrapper around the Tesseract OCR engine — it
+# needs the actual `tesseract` binary present on the system, which pip
+# alone can't install. Railway's default Nixpacks builder reads this file
+# to add extra system packages during the build.
+[phases.setup]
+nixPkgs = ["tesseract"]

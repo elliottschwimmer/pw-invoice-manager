@@ -11,3 +11,6 @@ python-calamine==0.4.0
 msal==1.31.0
 requests==2.32.3
 APScheduler==3.10.4
+PyMuPDF==1.24.11
+pytesseract==0.3.13
+Pillow==10.4.0

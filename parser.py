@@ -1,9 +1,11 @@
 """Best-effort field extraction from invoice/PO PDFs.
 
-This is deliberately simple regex-based extraction, not OCR/ML. It gets you
-90% of the way for typewritten vendor invoices; anything it misses the PM or
-Administrator can fix by hand in the dashboard. If invoices are scanned
-images rather than text PDFs, we'll need to add OCR (pytesseract) later.
+This is deliberately simple regex-based extraction, not ML. It gets you 90%
+of the way for typewritten vendor invoices; anything it misses the PM or
+Administrator can fix by hand in the dashboard. A scanned image PDF (no
+embedded text layer at all) falls back to OCR — see _ocr_page below; that's
+inherently less accurate than a real text layer, so scanned invoices are
+still more likely to need a manual correction than typed ones.
 """
 from __future__ import annotations
 
@@ -12,6 +14,11 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 import pdfplumber
+
+# A page's real text layer is missing (scanned image) if pdfplumber gets
+# next to nothing off it — anything above this is treated as "has text",
+# below it triggers the OCR fallback.
+_OCR_FALLBACK_THRESHOLD = 20
 
 
 def extract_text(pdf_bytes: bytes) -> str:
@@ -22,8 +29,43 @@ def extract_pages_text(pdf_bytes: bytes) -> list[str]:
     """Same as extract_text but keeps each page's text separate — needed to
     detect where one invoice ends and another begins in a multi-invoice
     PDF (see split_invoices in intake.py)."""
-    with pdfplumber.open(pdf_bytes if hasattr(pdf_bytes, "read") else _bytesio(pdf_bytes)) as pdf:
-        return [page.extract_text() or "" for page in pdf.pages]
+    data = pdf_bytes.read() if hasattr(pdf_bytes, "read") else pdf_bytes
+    with pdfplumber.open(_bytesio(data)) as pdf:
+        texts = [page.extract_text() or "" for page in pdf.pages]
+
+    for i, text in enumerate(texts):
+        if len(text.strip()) >= _OCR_FALLBACK_THRESHOLD:
+            continue
+        ocr_text = _ocr_page(data, i)
+        if ocr_text:
+            texts[i] = ocr_text
+    return texts
+
+
+def _ocr_page(pdf_bytes: bytes, page_index: int) -> str:
+    """Rasterizes one page and runs Tesseract OCR on it — only reached when
+    the page has no usable text layer at all (a scanned document). Returns
+    "" (never raises) if OCR isn't available in this environment or the
+    page fails to process, so a missing/broken OCR install degrades to the
+    same "field left blank, fix it by hand" behavior as before, rather than
+    breaking ingestion."""
+    try:
+        import fitz  # PyMuPDF — rasterizes without an external Poppler/
+        import pytesseract  # ImageMagick binary, unlike pdf2image/Wand.
+        from PIL import Image
+    except ImportError:
+        return ""
+
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page = doc[page_index]
+        # 300 DPI is a common sweet spot for OCR accuracy vs. speed —
+        # too low loses small print, too high mostly just costs time.
+        pix = page.get_pixmap(dpi=300)
+        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        return pytesseract.image_to_string(img)
+    except Exception:
+        return ""
 
 
 def _bytesio(data: bytes):
