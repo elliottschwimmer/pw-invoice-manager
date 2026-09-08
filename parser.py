@@ -149,8 +149,12 @@ def parse_invoice_fields(text: str) -> dict:
 
     for line in lines:
         if fields["invoice_number"] is None:
-            m = _INVOICE_NUM_RE.search(line)
-            if m:
+            # finditer, not search — a line can mention "Invoice" more than
+            # once before the real label (e.g. a table header "Invoice Date
+            # Invoice A/C ..."), and only searching the leftmost match means
+            # the label that actually carries the number never even gets
+            # tried once an earlier one fails its checks.
+            for m in _INVOICE_NUM_RE.finditer(line):
                 value = m.group(1)
                 # A bare "Invoice"/"Inv" with no "#"/":" marker (e.g. inside
                 # a company name like "Multi Invoice Vendor") can only be
@@ -160,6 +164,7 @@ def parse_invoice_fields(text: str) -> dict:
                 looks_like_number = has_marker or any(ch.isdigit() for ch in value)
                 if looks_like_number and value.lower() not in _INVOICE_NUM_BLOCKLIST:
                     fields["invoice_number"] = value.strip()
+                    break
         if fields["po_number"] is None:
             m = _PO_NUM_RE.search(line)
             if m:
@@ -188,6 +193,9 @@ def parse_invoice_fields(text: str) -> dict:
 
     if fields["invoice_number"] is None:
         fields["invoice_number"] = _extract_invoice_number_from_stripe_summary(lines)
+
+    if fields["invoice_number"] is None:
+        fields["invoice_number"] = _extract_invoice_number_after_date_column(lines)
 
     for pattern in _AMOUNT_LABEL_PATTERNS:
         matches = pattern.findall(text)
@@ -308,6 +316,37 @@ def _extract_invoice_number_from_stripe_summary(lines: list[str]):
 
 
 _ANY_DATE_RE = re.compile(_DATE_VALUE)
+
+
+# A header like "Invoice Date  Invoice A/C  Customer PO  Payment Term ..."
+# with the actual invoice number in the "Invoice A/C" data column, right
+# after the invoice date on the same data row:
+#     Invoice Date Invoice A/C Customer PO Payment Term Customer Tax #
+#     Jul 1, 2026 TWI000007 PIE-0011 NOT PROVIDED NET30
+# _INVOICE_NUM_RE can't catch this — "Invoice" appears twice on the header
+# line before any usable value, and the real value is on the row below
+# anyway. Find the date on the data row and take the token right after it.
+_INVOICE_NUM_AFTER_DATE_HEADER_RE = re.compile(
+    r"invoice[ \t]*date.*invoice[ \t]*(?:a/?c|acct|account)", re.IGNORECASE
+)
+
+
+def _extract_invoice_number_after_date_column(lines: list[str]):
+    for i, line in enumerate(lines):
+        if not _INVOICE_NUM_AFTER_DATE_HEADER_RE.search(line):
+            continue
+        for data_line in lines[i + 1: i + 3]:
+            data_line = data_line.strip()
+            if not data_line:
+                continue
+            m = _ANY_DATE_RE.search(data_line)
+            if not m:
+                break
+            remainder = data_line[m.end():].strip().split()
+            if remainder and remainder[0].lower() not in _INVOICE_NUM_BLOCKLIST:
+                return remainder[0]
+            break
+    return None
 
 
 _DATE_WORD_RE = re.compile(r"\bdate\b", re.IGNORECASE)
