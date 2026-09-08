@@ -109,17 +109,26 @@ _PO_NUM_RE = re.compile(
 # covers "Total USD________________10,861.34" (a currency code plus a run
 # of underscores used as a remittance-slip fill line), not just a bare "$"
 # or colon.
+# The value itself: an optional leading "-" or wrapping "(...)" (both
+# common ways a credit memo / refund prints a negative amount), an
+# optional "$", then the digits. The filler between the label and the
+# value excludes "(" and "-" specifically so a negative sign or opening
+# paren never gets silently swallowed as "just filler" before the digits
+# are reached — that would otherwise strip the negative-ness right off
+# before _to_decimal ever sees it.
+_AMOUNT_VALUE = r"(\(?-?\$?[\d,]+\.\d{2}\)?)"
+_AMOUNT_FILLER = r"[^\d(\-\n]{0,40}"
 _AMOUNT_LABEL_PATTERNS = [
-    re.compile(r"\bamount[ \t]*due\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
-    re.compile(r"\bbalance[ \t]*due\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
-    re.compile(r"\b(?:grand[ \t]*total|total[ \t]*due|invoice[ \t]*total)\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
+    re.compile(r"\bamount[ \t]*due\b" + _AMOUNT_FILLER + _AMOUNT_VALUE, re.IGNORECASE),
+    re.compile(r"\bbalance[ \t]*due\b" + _AMOUNT_FILLER + _AMOUNT_VALUE, re.IGNORECASE),
+    re.compile(r"\b(?:grand[ \t]*total|total[ \t]*due|invoice[ \t]*total)\b" + _AMOUNT_FILLER + _AMOUNT_VALUE, re.IGNORECASE),
     # \b before "total" so it doesn't match inside "Subtotal"; the
     # lookahead skips lines like "Total sales tax" / "Total tax" so a tax
     # line never gets mistaken for the real total.
-    re.compile(r"\btotal\b(?![^\d\n]{0,20}\btax\b)[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
-    re.compile(r"\bnet[ \t]*amount\b[^\d\n]{0,40}([\d,]+\.\d{2})", re.IGNORECASE),
+    re.compile(r"\btotal\b(?![^\d\n]{0,20}\btax\b)" + _AMOUNT_FILLER + _AMOUNT_VALUE, re.IGNORECASE),
+    re.compile(r"\bnet[ \t]*amount\b" + _AMOUNT_FILLER + _AMOUNT_VALUE, re.IGNORECASE),
 ]
-_FALLBACK_AMOUNT_RE = re.compile(r"\$[ \t]*([\d,]+\.\d{2})")
+_FALLBACK_AMOUNT_RE = re.compile(r"(\(?-?\$[ \t]*[\d,]+\.\d{2}\)?)")
 # Full month names checked before their abbreviations so "September" always
 # matches whole rather than stopping short at "Sep".
 _MONTH_NAMES_RE_FRAGMENT = (
@@ -431,10 +440,17 @@ def _extract_due_date_from_column(lines: list[str]):
 
 
 def _to_decimal(s: str) -> Decimal:
+    s = s.strip()
+    # Accounting notation: "(500.00)" means -500.00, same as a leading "-".
+    negative = s.startswith("(") and s.endswith(")")
+    if negative:
+        s = s[1:-1]
+    s = s.replace(",", "").replace("$", "").strip()
     try:
-        return Decimal(s.replace(",", ""))
+        value = Decimal(s)
     except InvalidOperation:
         return Decimal("0.00")
+    return -value if negative else value
 
 
 def _to_date(s: str):
