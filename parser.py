@@ -184,6 +184,15 @@ _VENDOR_LINE_SKIP_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "Remit To" names the entity that actually gets paid — a more reliable
+# vendor-name signal than an arbitrary "first line on the page" guess, and
+# it catches invoices where the letterhead belongs to a billing/AP service
+# but the money is owed to a different company underneath. The label and
+# the name are sometimes on the same line ("Remit To: Acme Inc."), sometimes
+# the name is on the next line(s) down.
+_VENDOR_REMIT_TO_LABEL_RE = re.compile(r"^remit[ \t]*to\b", re.IGNORECASE)
+_VENDOR_REMIT_TO_INLINE_RE = re.compile(r"^remit[ \t]*to[ \t]*:?[ \t]*(.+)$", re.IGNORECASE)
+
 
 def parse_invoice_fields(text: str) -> dict:
     fields = {
@@ -277,6 +286,9 @@ def parse_invoice_fields(text: str) -> dict:
             break
 
     if not fields["vendor_name_guess"]:
+        fields["vendor_name_guess"] = _extract_vendor_from_remit_to(lines)
+
+    if not fields["vendor_name_guess"]:
         for line in lines:
             line = line.strip()
             if (
@@ -288,6 +300,36 @@ def parse_invoice_fields(text: str) -> dict:
                 break
 
     return fields
+
+
+def _extract_vendor_from_remit_to(lines: list[str]):
+    for i, raw_line in enumerate(lines):
+        stripped = raw_line.strip()
+        if not stripped or not _VENDOR_REMIT_TO_LABEL_RE.match(stripped):
+            continue
+
+        m = _VENDOR_REMIT_TO_INLINE_RE.match(stripped)
+        inline = m.group(1).strip() if m else ""
+        if inline and "$" not in inline and not _VENDOR_LINE_SKIP_RE.match(inline):
+            return inline
+
+        # No name on the same line as the label — the name is usually the
+        # next non-blank line down (an address line or two may follow it,
+        # but the company name comes first).
+        for candidate_line in lines[i + 1:i + 4]:
+            candidate = candidate_line.strip()
+            if not candidate:
+                continue
+            if (
+                len(candidate) < 80 and "$" not in candidate
+                and not _VENDOR_LINE_SKIP_RE.match(candidate)
+                and not _ANY_DATE_RE.fullmatch(candidate)
+            ):
+                return candidate
+            break
+        break
+
+    return None
 
 
 def _extract_invoice_number_from_table(lines: list[str]):

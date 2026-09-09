@@ -17,6 +17,14 @@ from pdf_export import generate_final_pdf
 
 BERKELEY_DOMAIN = "berkeleyca.gov"
 
+# Generic webmail providers can't identify a vendor — many different
+# companies could email from gmail.com, so a shared domain there would
+# wrongly merge unrelated vendors together.
+_GENERIC_EMAIL_DOMAINS = {
+    "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com",
+    "icloud.com", "live.com", "msn.com", "protonmail.com", "comcast.net",
+}
+
 
 def calculate_due_date(fields: dict, received_at: datetime):
     """Priority: an explicit due date printed on the invoice, else the
@@ -178,26 +186,46 @@ def _create_invoice_from_message(msg: dict, precomputed_text: str = None) -> Inv
     return invoice
 
 
+def _friendly_name_from_domain(domain):
+    """Turns "ips-group.com" into "Ips Group" — a readable placeholder name
+    when the invoice text itself gave us no usable vendor name at all."""
+    if not domain:
+        return None
+    label = domain.split(".")[0].replace("-", " ").replace("_", " ").strip()
+    return label.title() or None
+
+
 def _match_or_create_vendor(name_guess, sender_email) -> Vendor | None:
     name_guess = (name_guess or "").strip()
-    domain = sender_email.split("@", 1)[1] if sender_email and "@" in sender_email else None
+    raw_domain = sender_email.split("@", 1)[1].lower() if sender_email and "@" in sender_email else None
+    domain = raw_domain if raw_domain and raw_domain not in _GENERIC_EMAIL_DOMAINS else None
     if not name_guess and not domain:
         return None
 
+    # A domain we've already linked to a vendor is a stronger signal than
+    # text freshly parsed off this one invoice (scan noise, an unfamiliar
+    # letterhead layout, etc. can throw the text guess off) — check it first.
     vendor = None
-    if name_guess:
+    if domain:
+        vendor = Vendor.query.filter_by(email_domain=domain).first()
+
+    if not vendor and name_guess:
         # Exact (case-insensitive) name match only — never let a shared
         # sender domain silently merge two different companies together.
         vendor = Vendor.query.filter(db.func.lower(Vendor.name) == name_guess.lower()).first()
-    elif domain:
-        # No name detected on the invoice at all — domain is the only
-        # signal we have, so use it as a last resort.
-        vendor = Vendor.query.filter_by(email_domain=domain).first()
 
     if not vendor:
-        vendor = Vendor(name=name_guess or domain or "Unknown Vendor", email_domain=domain)
+        vendor = Vendor(
+            name=name_guess or _friendly_name_from_domain(domain) or "Unknown Vendor",
+            email_domain=domain,
+        )
         db.session.add(vendor)
         db.session.flush()
+    elif domain and not vendor.email_domain:
+        # Backfill the domain onto a vendor that was previously only ever
+        # matched by name, so future invoices from them resolve by domain too.
+        vendor.email_domain = domain
+
     return vendor
 
 
