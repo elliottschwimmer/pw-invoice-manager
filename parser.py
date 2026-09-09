@@ -193,14 +193,38 @@ _VENDOR_LINE_SKIP_RE = re.compile(
     re.IGNORECASE,
 )
 
-# "Remit To" names the entity that actually gets paid — a more reliable
-# vendor-name signal than an arbitrary "first line on the page" guess, and
-# it catches invoices where the letterhead belongs to a billing/AP service
-# but the money is owed to a different company underneath. The label and
-# the name are sometimes on the same line ("Remit To: Acme Inc."), sometimes
-# the name is on the next line(s) down.
-_VENDOR_REMIT_TO_LABEL_RE = re.compile(r"^remit[ \t]*to\b", re.IGNORECASE)
-_VENDOR_REMIT_TO_INLINE_RE = re.compile(r"^remit[ \t]*to[ \t]*:?[ \t]*(.+)$", re.IGNORECASE)
+# "Remit To" (and its common variants: "Please Remit To", "Remit Payment
+# To", "Remittance Address", "Send Payment To", "Make Check(s) Payable To")
+# names the entity that actually gets paid — a more reliable vendor-name
+# signal than an arbitrary "first line on the page" guess, and it catches
+# invoices where the letterhead belongs to a billing/AP service but the
+# money is owed to a different company underneath. The label and the name
+# are sometimes on the same line ("Remit To: Acme Inc."), sometimes the
+# name is on the next line(s) down.
+# Each alternative is a fixed phrase with no internal optional groups, so
+# there's no ambiguity for the regex engine to backtrack into — without
+# that, an optional-heavy pattern can end up "donating" part of the label
+# itself (e.g. the word "Address") to the captured name on the inline-value
+# variant below.
+_VENDOR_REMIT_LABEL_FRAGMENT = (
+    r"please[ \t]+remit(?:[ \t]+payment)?[ \t]+to"
+    r"|remit(?:[ \t]+payment)?[ \t]+to"
+    r"|remittance[ \t]+(?:to|address)"
+    r"|send[ \t]+payment[ \t]+to"
+    r"|make[ \t]+checks?[ \t]+payable[ \t]+to"
+    r"|payable[ \t]+to"
+)
+_VENDOR_REMIT_TO_LABEL_RE = re.compile(r"^(?:" + _VENDOR_REMIT_LABEL_FRAGMENT + r")\b", re.IGNORECASE)
+_VENDOR_REMIT_TO_INLINE_RE = re.compile(
+    r"^(?:" + _VENDOR_REMIT_LABEL_FRAGMENT + r")[ \t]*:?[ \t]*(.+)$", re.IGNORECASE
+)
+
+# An email address printed on the invoice itself (billing/AP contact, an
+# "Email:" line, etc.) — its domain is a strong vendor-identity signal, used
+# as a fallback when there's no usable name text at all. Never the city's
+# own domain, which would only ever show up as the recipient, not the vendor.
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_BERKELEY_EMAIL_DOMAIN = "berkeleyca.gov"
 
 
 def parse_invoice_fields(text: str) -> dict:
@@ -212,6 +236,13 @@ def parse_invoice_fields(text: str) -> dict:
         "invoice_date": None,
         "net_terms_days": None,
         "vendor_name_guess": None,
+        # Weak last-resort text guess (just "the first plausible-looking
+        # line on the page") — kept separate from vendor_name_guess so a
+        # caller can prefer a known sender/invoice email domain over this
+        # when creating a brand-new vendor, rather than trusting arbitrary
+        # page text.
+        "vendor_name_fallback_guess": None,
+        "vendor_email_guess": None,
     }
 
     lines = text.splitlines()
@@ -300,16 +331,25 @@ def parse_invoice_fields(text: str) -> dict:
     if not fields["vendor_name_guess"]:
         fields["vendor_name_guess"] = _extract_vendor_from_remit_to(lines)
 
-    if not fields["vendor_name_guess"]:
-        for line in lines:
-            line = line.strip()
-            if (
-                line and len(line) < 80 and "$" not in line
-                and not _VENDOR_LINE_SKIP_RE.match(line)
-                and not _ANY_DATE_RE.fullmatch(line)
-            ):
-                fields["vendor_name_guess"] = line
-                break
+    for line in lines:
+        line = line.strip()
+        if (
+            line and len(line) < 80 and "$" not in line
+            and not _VENDOR_LINE_SKIP_RE.match(line)
+            and not _ANY_DATE_RE.fullmatch(line)
+        ):
+            fields["vendor_name_fallback_guess"] = line
+            break
+
+    # An email address printed anywhere on the invoice (billing contact,
+    # "Email:" line, etc.) — its domain is used as a vendor-identity signal,
+    # tried before falling back to arbitrary page text (see caller).
+    for m in _EMAIL_RE.finditer(text):
+        addr = m.group(0)
+        if addr.lower().endswith("@" + _BERKELEY_EMAIL_DOMAIN):
+            continue
+        fields["vendor_email_guess"] = addr
+        break
 
     return fields
 
@@ -321,8 +361,11 @@ def _extract_vendor_from_remit_to(lines: list[str]):
             continue
 
         m = _VENDOR_REMIT_TO_INLINE_RE.match(stripped)
-        inline = m.group(1).strip() if m else ""
-        if inline and "$" not in inline and not _VENDOR_LINE_SKIP_RE.match(inline):
+        inline = m.group(1).strip(" \t:") if m else ""
+        if (
+            inline and any(ch.isalnum() for ch in inline)
+            and "$" not in inline and not _VENDOR_LINE_SKIP_RE.match(inline)
+        ):
             return inline
 
         # No name on the same line as the label — the name is usually the

@@ -132,14 +132,19 @@ def _create_invoice_from_message(msg: dict, precomputed_text: str = None) -> Inv
     sender_email = (msg.get("sender_email") or "").lower()
     domain_verified = sender_email.endswith("@" + BERKELEY_DOMAIN)
 
-    vendor = _match_or_create_vendor(fields.get("vendor_name_guess"), sender_email)
+    vendor = _match_or_create_vendor(
+        fields.get("vendor_name_guess"),
+        sender_email,
+        invoice_email=fields.get("vendor_email_guess"),
+        fallback_name_guess=fields.get("vendor_name_fallback_guess"),
+    )
 
     received_at = datetime.utcnow()
     due_date = calculate_due_date(fields, received_at)
 
     invoice = Invoice(
         vendor=vendor,
-        vendor_name_raw=fields.get("vendor_name_guess"),
+        vendor_name_raw=fields.get("vendor_name_guess") or fields.get("vendor_name_fallback_guess"),
         invoice_number=fields.get("invoice_number"),
         amount=fields.get("amount"),
         po_number=fields.get("po_number"),
@@ -195,28 +200,46 @@ def _friendly_name_from_domain(domain):
     return label.title() or None
 
 
-def _match_or_create_vendor(name_guess, sender_email) -> Vendor | None:
+def _usable_domain(email_address):
+    if not email_address or "@" not in email_address:
+        return None
+    domain = email_address.split("@", 1)[1].lower()
+    return domain if domain not in _GENERIC_EMAIL_DOMAINS else None
+
+
+def _match_or_create_vendor(name_guess, sender_email, invoice_email=None, fallback_name_guess=None) -> Vendor | None:
+    """Resolves the vendor for a new invoice. In priority order:
+    1. A domain we've already linked to a vendor — the sender's domain, or
+       (if that's not a known domain) an email address found printed on the
+       invoice itself. Either is a stronger signal than text freshly parsed
+       off this one document, which scan noise or an unfamiliar letterhead
+       layout can throw off.
+    2. An exact name match on the "From:"/"Remit To" guess, if we got one.
+    3. A brand-new vendor — named from the strong text guess if we have one,
+       else a readable name derived from whichever domain we found, and
+       only as an absolute last resort the weak "first line on the page"
+       guess, which is little more than a placeholder until corrected by hand.
+    """
     name_guess = (name_guess or "").strip()
-    raw_domain = sender_email.split("@", 1)[1].lower() if sender_email and "@" in sender_email else None
-    domain = raw_domain if raw_domain and raw_domain not in _GENERIC_EMAIL_DOMAINS else None
-    if not name_guess and not domain:
+    fallback_name_guess = (fallback_name_guess or "").strip()
+    sender_domain = _usable_domain(sender_email)
+    invoice_domain = _usable_domain(invoice_email)
+    domain = sender_domain or invoice_domain
+    if not name_guess and not fallback_name_guess and not domain:
         return None
 
-    # A domain we've already linked to a vendor is a stronger signal than
-    # text freshly parsed off this one invoice (scan noise, an unfamiliar
-    # letterhead layout, etc. can throw the text guess off) — check it first.
     vendor = None
     if domain:
         vendor = Vendor.query.filter_by(email_domain=domain).first()
 
     if not vendor and name_guess:
         # Exact (case-insensitive) name match only — never let a shared
-        # sender domain silently merge two different companies together.
+        # domain silently merge two different companies together.
         vendor = Vendor.query.filter(db.func.lower(Vendor.name) == name_guess.lower()).first()
 
     if not vendor:
         vendor = Vendor(
-            name=name_guess or _friendly_name_from_domain(domain) or "Unknown Vendor",
+            name=name_guess or _friendly_name_from_domain(domain) or fallback_name_guess or "Unknown Vendor",
             email_domain=domain,
         )
         db.session.add(vendor)
