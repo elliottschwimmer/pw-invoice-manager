@@ -292,6 +292,28 @@ def link_purchase_order(invoice: Invoice, po_id: int):
     _apply_po_to_invoice(invoice, po)
 
 
+def correct_po_number(invoice: Invoice, po_number: str):
+    """Lets a staff member fix a wrong/missing PO number right on the
+    invoice page. If the invoice isn't linked to a PO yet and this number
+    matches one on file, auto-links it and copies its budget lines in —
+    the same auto-match that runs at intake time. If the invoice is
+    already linked to a PO, only the displayed number is corrected; the
+    link itself isn't swapped, since that would silently replace whatever
+    budget coding is already there — use "Link to PO" for that instead."""
+    po_number = (po_number or "").strip()
+    old_number = invoice.po_number
+    invoice.po_number = po_number or None
+
+    if po_number and not invoice.purchase_order:
+        po = PurchaseOrder.query.filter_by(po_number=po_number).first()
+        if po:
+            _apply_po_to_invoice(invoice, po, log=False)
+            _log_event(invoice, "po_matched", f"Matched PO {po.po_number}, pre-filled {len(po.budget_lines)} line(s)")
+
+    _log_event(invoice, "po_number_corrected", f"PO number corrected from '{old_number or '—'}' to '{po_number or '—'}'")
+    db.session.commit()
+
+
 def correct_vendor(invoice: Invoice, vendor_name: str):
     """Lets a staff member fix a wrong/missing vendor match right on the
     invoice page. Reuses an existing vendor by exact name if one exists,

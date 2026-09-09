@@ -17,7 +17,7 @@ from models import (
 )
 from intake import (
     ingest_new_invoices, ingest_one_message, create_invoice_from_upload, assign_invoice, approve_invoice,
-    unapprove_invoice, mark_entered_in_munis, send_pm_reminder, correct_vendor, link_purchase_order,
+    unapprove_invoice, mark_entered_in_munis, send_pm_reminder, correct_vendor, correct_po_number, link_purchase_order,
     update_coding_lines as _apply_coding_lines,
 )
 from pdf_export import generate_final_pdf, generate_stamped_pdf
@@ -291,6 +291,13 @@ def register_routes(app):
         invoice = Invoice.query.get_or_404(invoice_id)
         correct_vendor(invoice, request.form.get("vendor_name", ""))
         flash("Vendor updated")
+        return redirect(url_for("invoice_detail", invoice_id=invoice_id))
+
+    @app.route("/invoices/<int:invoice_id>/po-number", methods=["POST"])
+    def set_po_number(invoice_id):
+        invoice = Invoice.query.get_or_404(invoice_id)
+        correct_po_number(invoice, request.form.get("po_number", ""))
+        flash("PO number updated")
         return redirect(url_for("invoice_detail", invoice_id=invoice_id))
 
     @app.route("/invoices/<int:invoice_id>/pdf")
