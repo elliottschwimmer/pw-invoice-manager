@@ -94,11 +94,20 @@ _INVOICE_NUM_BLOCKLIST = {
 # has no inline label, only a column position.
 _TABLE_HEADER_RE = re.compile(r"invoice[ \t]*#.*\bdate\b", re.IGNORECASE)
 # Negative lookahead for "box" so "P.O. Box 123, Berkeley CA" (a mailing
-# address) doesn't get mistaken for a PO number. City PO numbers are 8 digits.
+# address) doesn't get mistaken for a PO number. City PO numbers are usually
+# 8 digits, but a few characters short/long shouldn't fail the whole match.
 _PO_NUM_RE = re.compile(
-    r"(?:P\.?O\.?|purchase[ \t]*order)[ \t]*(?!box)(?:#|no\.?|number)?[ \t]*[:#]?[ \t]*(\d{8})",
+    r"(?:P\.?O\.?|purchase[ \t]*order)[ \t]*(?!box)(?:#|no\.?|number)?[ \t]*[:#]?[ \t]*(\d{5,10})",
     re.IGNORECASE,
 )
+# Handles a "P.O. No." (or similar) label sitting alone on its own line —
+# common on table-style invoices where the actual number is printed on the
+# next line down rather than right after the label.
+_PO_LABEL_ONLY_RE = re.compile(
+    r"^(?:P\.?O\.?|purchase[ \t]*order)[ \t]*(?:#|no\.?|number)?[ \t]*:?[ \t]*$",
+    re.IGNORECASE,
+)
+_PLAIN_NUMBER_RE = re.compile(r"\b(\d{5,10})\b")
 # Tried in priority order — "amount due"/"balance due" are the most
 # unambiguous label for what's actually owed, so they're checked before the
 # generic "total" patterns. This matters because a document can have
@@ -250,6 +259,9 @@ def parse_invoice_fields(text: str) -> dict:
 
     if fields["due_date"] is None:
         fields["due_date"] = _extract_due_date_from_column(lines)
+
+    if fields["po_number"] is None:
+        fields["po_number"] = _extract_po_number_from_label_line(lines)
 
     if fields["invoice_number"] is None:
         fields["invoice_number"] = _extract_invoice_number_from_stripe_summary(lines)
@@ -477,6 +489,26 @@ def _extract_due_date_from_column(lines: list[str]):
             if dates:
                 index = min(date_columns_before, len(dates) - 1)
                 return _to_date(dates[index])
+            break
+    return None
+
+
+def _extract_po_number_from_label_line(lines: list[str]):
+    """Handles "P.O. No." (or similar) printed alone on its own line, with
+    the actual number one line below it rather than right after the label —
+    common on table-style invoices where each column header gets its own
+    line in the extracted text."""
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or not _PO_LABEL_ONLY_RE.match(stripped):
+            continue
+        for data_line in lines[i + 1: i + 3]:
+            data_line = data_line.strip()
+            if not data_line:
+                continue
+            m = _PLAIN_NUMBER_RE.search(data_line)
+            if m:
+                return m.group(1)
             break
     return None
 
