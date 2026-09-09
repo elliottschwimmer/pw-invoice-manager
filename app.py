@@ -27,6 +27,7 @@ from fiscal_year_utils import (
     current_fiscal_year_label, po_needs_fiscal_year_review, current_fiscal_year_end_date,
 )
 from po_import import import_munis_po
+from text_utils import to_proper_case
 
 
 def _money(value):
@@ -646,7 +647,7 @@ def register_routes(app):
     @app.route("/purchase-orders/create", methods=["POST"])
     def create_po():
         po_number = request.form["po_number"]
-        vendor_name = request.form.get("vendor_name", "").strip()
+        vendor_name = to_proper_case(request.form.get("vendor_name", "").strip())
         contract_number = request.form.get("contract_number", "")
         uploaded_by = request.form.get("uploaded_by", "")
         fiscal_year_scope = request.form.get("fiscal_year_scope", "one_time")
@@ -717,7 +718,7 @@ def register_routes(app):
     @app.route("/purchase-orders/<int:po_id>/vendor", methods=["POST"])
     def update_po_vendor(po_id):
         po = PurchaseOrder.query.get_or_404(po_id)
-        po.vendor_name = request.form.get("vendor_name", "").strip() or None
+        po.vendor_name = to_proper_case(request.form.get("vendor_name", "").strip()) or None
         db.session.commit()
         flash("Vendor updated")
         return redirect(url_for("edit_po", po_id=po_id))
@@ -886,7 +887,7 @@ def register_routes(app):
     @app.route("/vendors/<int:vendor_id>/rename", methods=["POST"])
     def rename_vendor(vendor_id):
         vendor = Vendor.query.get_or_404(vendor_id)
-        new_name = request.form.get("name", "").strip()
+        new_name = to_proper_case(request.form.get("name", "").strip())
         if new_name:
             vendor.name = new_name
             db.session.commit()

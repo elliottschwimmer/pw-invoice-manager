@@ -14,6 +14,7 @@ from models import (
 from parser import extract_text, parse_invoice_fields, split_invoices
 from email_service import get_email_backend
 from pdf_export import generate_final_pdf
+from text_utils import to_proper_case
 
 BERKELEY_DOMAIN = "berkeleyca.gov"
 
@@ -144,7 +145,7 @@ def _create_invoice_from_message(msg: dict, precomputed_text: str = None) -> Inv
 
     invoice = Invoice(
         vendor=vendor,
-        vendor_name_raw=fields.get("vendor_name_guess") or fields.get("vendor_name_fallback_guess"),
+        vendor_name_raw=to_proper_case(fields.get("vendor_name_guess") or fields.get("vendor_name_fallback_guess")),
         invoice_number=fields.get("invoice_number"),
         amount=fields.get("amount"),
         po_number=fields.get("po_number"),
@@ -238,8 +239,9 @@ def _match_or_create_vendor(name_guess, sender_email, invoice_email=None, fallba
         vendor = Vendor.query.filter(db.func.lower(Vendor.name) == name_guess.lower()).first()
 
     if not vendor:
+        chosen_name = name_guess or _friendly_name_from_domain(domain) or fallback_name_guess
         vendor = Vendor(
-            name=name_guess or _friendly_name_from_domain(domain) or fallback_name_guess or "Unknown Vendor",
+            name=to_proper_case(chosen_name) or "Unknown Vendor",
             email_domain=domain,
         )
         db.session.add(vendor)
@@ -318,7 +320,7 @@ def correct_vendor(invoice: Invoice, vendor_name: str):
     """Lets a staff member fix a wrong/missing vendor match right on the
     invoice page. Reuses an existing vendor by exact name if one exists,
     otherwise creates it — same rule as auto-ingest, just human-triggered."""
-    vendor_name = (vendor_name or "").strip()
+    vendor_name = to_proper_case((vendor_name or "").strip())
     if not vendor_name:
         return
 
