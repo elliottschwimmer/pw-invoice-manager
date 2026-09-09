@@ -715,6 +715,14 @@ def register_routes(app):
         flash("Vendor updated")
         return redirect(url_for("edit_po", po_id=po_id))
 
+    @app.route("/purchase-orders/<int:po_id>/contract-number", methods=["POST"])
+    def update_po_contract_number(po_id):
+        po = PurchaseOrder.query.get_or_404(po_id)
+        po.contract_number = request.form.get("contract_number", "").strip() or None
+        db.session.commit()
+        flash("Contract number updated")
+        return redirect(url_for("edit_po", po_id=po_id))
+
     @app.route("/purchase-orders/<int:po_id>/lines", methods=["POST"])
     def update_po_lines(po_id):
         po = PurchaseOrder.query.get_or_404(po_id)

@@ -83,8 +83,10 @@ def _build_stamp_overlay(invoice, page_width: float, page_height: float) -> byte
         )
     if coded_lines:
         po_number = invoice.purchase_order.po_number if invoice.purchase_order else invoice.po_number
+        contract_number = invoice.purchase_order.contract_number if invoice.purchase_order else None
         po_part = f"PO {po_number} — " if po_number else ""
-        coding_lines_bottom_up.append(f"{po_part}Budget Coding (Total {_money(invoice.coding_total)}):")
+        contract_part = f"Contract {contract_number} — " if contract_number else ""
+        coding_lines_bottom_up.append(f"{po_part}{contract_part}Budget Coding (Total {_money(invoice.coding_total)}):")
 
     # Signature block height: printed "Electronically approved..." line,
     # the signature underline, and the signature name above it.
@@ -144,6 +146,9 @@ def _build_cover_page(invoice) -> bytes:
     line(f"Vendor: {vendor_name}")
     line(f"Invoice Number: {invoice.invoice_number or '—'}")
     line(f"PO Number: {invoice.po_number or '—'}")
+    contract_number = invoice.purchase_order.contract_number if invoice.purchase_order else None
+    if contract_number:
+        line(f"Contract Number: {contract_number}")
     line(f"Invoice Amount: {_money(invoice.amount)}")
     line(f"Due Date: {invoice.due_date.strftime('%m/%d/%Y') if invoice.due_date else '—'}")
     y -= 8

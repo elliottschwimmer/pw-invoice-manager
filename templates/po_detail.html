@@ -25,7 +25,6 @@
     <h3>PO Details</h3>
     <div class="field-grid">
       <div><span class="muted">Description</span><div>{{ po.description or "—" }}</div></div>
-      <div><span class="muted">Contract #</span><div>{{ po.contract_number or "—" }}</div></div>
       {% if po.munis_liquidated_total is not none %}
       <div><span class="muted">Liquidated (Munis)</span><div>{{ po.munis_liquidated_total|money }}</div></div>
       <div><span class="muted">Open Amount (Munis)</span><div>{{ po.munis_open_amount|money }}</div></div>
@@ -38,6 +37,14 @@
       <label>Vendor Name</label>
       <div style="display:flex; gap:8px;">
         <input type="text" name="vendor_name" value="{{ po.vendor.name if po.vendor else (po.vendor_name or '') }}" placeholder="Vendor name">
+        <button class="btn btn-secondary" type="submit">Save</button>
+      </div>
+    </form>
+
+    <form method="post" action="{{ url_for('update_po_contract_number', po_id=po.id) }}" style="margin-top:12px;">
+      <label>Contract Number</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" name="contract_number" value="{{ po.contract_number or '' }}" placeholder="Contract number">
         <button class="btn btn-secondary" type="submit">Save</button>
       </div>
     </form>
