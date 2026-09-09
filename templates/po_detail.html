@@ -130,10 +130,20 @@
     <div class="page-drop-overlay-inner"><p id="page-drop-overlay-text" style="margin:0;">Drop to update this PO from Munis</p></div>
   </div>
 
+  <!-- A real form submission (not fetch+redirect) — the browser handles the
+       whole POST -> redirect -> GET as one native navigation, so the page
+       that lands is always a genuinely fresh server render, never a stale
+       intermediate one. -->
+  <form id="munis-drop-form" method="post" action="{{ url_for('import_munis') }}" enctype="multipart/form-data" style="display:none;">
+    <input type="file" name="munis_file" id="munis-drop-file-input">
+  </form>
+
   <script>
     (function () {
       const overlay = document.getElementById('page-drop-overlay');
       const overlayText = document.getElementById('page-drop-overlay-text');
+      const dropForm = document.getElementById('munis-drop-form');
+      const dropFileInput = document.getElementById('munis-drop-file-input');
       let dragCounter = 0;
 
       function hasFiles(e) {
@@ -163,26 +173,16 @@
           return f.name.toLowerCase().endsWith('.xlsx');
         });
         if (!file) {
-          overlay.classList.remove('active');
           overlayText.textContent = 'That doesn\'t look like a Munis .xlsx export — nothing uploaded.';
           setTimeout(function () { overlay.classList.remove('active'); }, 1800);
           return;
         }
-        uploadFile(file);
-      });
-
-      async function uploadFile(file) {
         overlayText.textContent = 'Updating PO from Munis…';
-        const formData = new FormData();
-        formData.append('munis_file', file);
-        try {
-          const resp = await fetch('{{ url_for("import_munis") }}', { method: 'POST', body: formData });
-          window.location = resp.url;
-        } catch (err) {
-          overlayText.textContent = 'Upload failed — check your connection and try again.';
-          setTimeout(function () { overlay.classList.remove('active'); }, 2500);
-        }
-      }
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        dropFileInput.files = dt.files;
+        dropForm.submit();
+      });
     })();
   </script>
 {% endblock %}
