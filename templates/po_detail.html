@@ -123,4 +123,66 @@
       <button class="btn" type="submit" style="margin-top:14px;">Save budget lines</button>
     </form>
   </div>
+
+  <p class="muted" style="text-align:center; margin-top:-8px;">PO amended? Drag an updated Munis export (.xlsx) anywhere on this page to refresh these budget lines — account strings you've already coded are kept.</p>
+
+  <div class="page-drop-overlay" id="page-drop-overlay">
+    <div class="page-drop-overlay-inner"><p id="page-drop-overlay-text" style="margin:0;">Drop to update this PO from Munis</p></div>
+  </div>
+
+  <script>
+    (function () {
+      const overlay = document.getElementById('page-drop-overlay');
+      const overlayText = document.getElementById('page-drop-overlay-text');
+      let dragCounter = 0;
+
+      function hasFiles(e) {
+        return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+      }
+
+      window.addEventListener('dragenter', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragCounter++;
+        overlay.classList.add('active');
+      });
+      window.addEventListener('dragover', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+      });
+      window.addEventListener('dragleave', function (e) {
+        if (!hasFiles(e)) return;
+        dragCounter = Math.max(0, dragCounter - 1);
+        if (dragCounter === 0) overlay.classList.remove('active');
+      });
+      window.addEventListener('drop', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragCounter = 0;
+        const file = Array.from(e.dataTransfer.files).find(function (f) {
+          return f.name.toLowerCase().endsWith('.xlsx');
+        });
+        if (!file) {
+          overlay.classList.remove('active');
+          overlayText.textContent = 'That doesn\'t look like a Munis .xlsx export — nothing uploaded.';
+          setTimeout(function () { overlay.classList.remove('active'); }, 1800);
+          return;
+        }
+        uploadFile(file);
+      });
+
+      async function uploadFile(file) {
+        overlayText.textContent = 'Updating PO from Munis…';
+        const formData = new FormData();
+        formData.append('munis_file', file);
+        try {
+          const resp = await fetch('{{ url_for("import_munis") }}', { method: 'POST', body: formData });
+          window.location = resp.url;
+        } catch (err) {
+          overlayText.textContent = 'Upload failed — check your connection and try again.';
+          setTimeout(function () { overlay.classList.remove('active'); }, 2500);
+        }
+      }
+    })();
+  </script>
 {% endblock %}
