@@ -1,5 +1,3 @@
-import base64
-import hmac
 import re
 from datetime import datetime, date
 from decimal import Decimal
@@ -16,8 +14,8 @@ from models import (
     InvoiceCodingLine, OutgoingEmailLog, ActiveAccount,
 )
 from intake import (
-    ingest_new_invoices, ingest_one_message, create_invoice_from_upload, assign_invoice, approve_invoice,
-    unapprove_invoice, mark_entered_in_munis, send_pm_reminder, correct_vendor, correct_po_number, link_purchase_order,
+    ingest_new_invoices, create_invoice_from_upload, assign_invoice, approve_invoice,
+    unapprove_invoice, mark_entered_in_munis, revert_status, send_pm_reminder, correct_vendor, correct_po_number, link_purchase_order,
     update_coding_lines as _apply_coding_lines,
 )
 from pdf_export import generate_final_pdf, generate_stamped_pdf
@@ -163,7 +161,7 @@ def register_auth(app):
         password = app.config.get("APP_PASSWORD")
         if not password:
             return None
-        if request.endpoint in ("login", "static", "intake_webhook"):
+        if request.endpoint in ("login", "static"):
             return None
         if session.get("authed"):
             return None
@@ -379,6 +377,13 @@ def register_routes(app):
         flash("Marked entered in Munis")
         return redirect(url_for("invoice_detail", invoice_id=invoice_id))
 
+    @app.route("/invoices/<int:invoice_id>/revert-status", methods=["POST"])
+    def revert_invoice_status(invoice_id):
+        invoice = Invoice.query.get_or_404(invoice_id)
+        revert_status(invoice)
+        flash(f"Reverted to {invoice.status_label}")
+        return redirect(url_for("invoice_detail", invoice_id=invoice_id))
+
     @app.route("/invoices/<int:invoice_id>/delete", methods=["POST"])
     def delete_invoice(invoice_id):
         invoice = Invoice.query.get_or_404(invoice_id)
@@ -387,6 +392,11 @@ def register_routes(app):
         # invoices point back to it — clear that link rather than leaving
         # a dangling reference (or failing on the foreign key).
         Invoice.query.filter_by(split_from_invoice_id=invoice.id).update({"split_from_invoice_id": None})
+        # Sent-email log rows reference the invoice but aren't cascade-deleted
+        # with it (they're kept as a record of what was sent even after the
+        # invoice itself is gone) — clear the link rather than hitting a
+        # foreign-key violation on delete.
+        OutgoingEmailLog.query.filter_by(invoice_id=invoice.id).update({"invoice_id": None})
         db.session.delete(invoice)
         db.session.commit()
         flash(f"Deleted invoice {label}")
@@ -503,66 +513,6 @@ def register_routes(app):
         created = ingest_new_invoices()
         flash(f"Ingested {len(created)} new invoice(s)")
         return redirect(url_for("dashboard"))
-
-    @app.route("/api/intake/webhook", methods=["POST"])
-    def intake_webhook():
-        """Interim automatic-ingestion path for a Power Automate Flow to
-        call directly — a workaround for while the Graph API app
-        registration is pending IT approval. Accepts either a purpose-built
-        JSON body (filename/content_base64/sender_email/subject) or, more
-        robustly, a raw Microsoft Graph fileAttachment object passed
-        straight through from the Flow's "Apply to each" item — name/
-        contentBytes/contentType — since that avoids the Flow author having
-        to hand-build JSON around a very large base64 value. In the latter
-        case sender_email/subject/secret come from headers instead, since
-        the body is just the attachment object. Auth is a shared secret,
-        not a session — this route is exempted from the login gate above."""
-        expected = app.config.get("INTAKE_WEBHOOK_SECRET")
-        if not expected:
-            return jsonify({"error": "webhook not configured"}), 503
-
-        data = request.get_json(silent=True) or {}
-        provided = (
-            request.headers.get("X-Webhook-Secret")
-            or request.args.get("secret")
-            or data.get("secret")
-        )
-        if not provided or not hmac.compare_digest(str(provided), expected):
-            return jsonify({"error": "unauthorized"}), 401
-
-        filename = data.get("filename") or data.get("name") or "invoice.pdf"
-        content_b64 = data.get("content_base64") or data.get("contentBytes")
-        if not content_b64:
-            return jsonify({"error": "content_base64 is required"}), 400
-        try:
-            pdf_bytes = base64.b64decode(content_b64)
-        except Exception:
-            return jsonify({"error": "content_base64 is not valid base64"}), 400
-
-        # Only PDFs are invoices — an email's inline logo, signature image,
-        # or other non-PDF attachment gets sent through the same "for each
-        # attachment" loop, so skip anything that clearly isn't a PDF
-        # rather than creating garbage invoices from it. Not an error —
-        # Power Automate would otherwise mark the run as failed.
-        content_type = (data.get("contentType") or data.get("content_type") or "").lower()
-        looks_like_pdf = (
-            filename.lower().endswith(".pdf")
-            or content_type == "application/pdf"
-            or pdf_bytes[:5] == b"%PDF-"
-        )
-        if not looks_like_pdf:
-            return jsonify({"created": 0, "skipped": filename, "reason": "not a PDF"}), 200
-
-        msg = {
-            "data": pdf_bytes,
-            "filename": filename,
-            "sender_email": data.get("sender_email") or data.get("from") or request.headers.get("X-Sender-Email"),
-            "subject": data.get("subject") or request.headers.get("X-Subject") or f"Invoice — {filename}",
-            "cc_emails": data.get("cc_emails", ""),
-            "message_id": data.get("message_id"),
-        }
-        created = ingest_one_message(msg)
-        return jsonify({"created": len(created), "invoice_ids": [inv.id for inv in created]}), 200
 
     @app.route("/invoices/upload", methods=["GET", "POST"])
     def upload_invoice():

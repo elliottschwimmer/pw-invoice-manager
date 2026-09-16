@@ -51,17 +51,6 @@ def ingest_new_invoices():
     return created
 
 
-def ingest_one_message(msg: dict) -> list[Invoice]:
-    """Same per-message ingestion the mailbox poller uses, exposed for
-    other intake paths that already have one message's data in hand
-    rather than a whole inbox to poll — e.g. the Power Automate webhook,
-    an interim workaround for automatic ingestion while the Graph API app
-    registration is pending IT approval. `msg` needs at least `data`
-    (PDF bytes) and `filename`; `sender_email`, `subject`, `cc_emails`,
-    and `message_id` are optional context."""
-    return _ingest_one_pdf(msg)
-
-
 def create_invoice_from_upload(data: bytes, filename: str, uploaded_by: str = "") -> list[Invoice]:
     """Manual upload path — no mailbox involved. Used for solo use before
     the shared inbox is connected: drop a PDF straight into the app."""
@@ -383,6 +372,29 @@ def mark_entered_in_munis(invoice: Invoice, entered_by: str):
     invoice.munis_entered_by = entered_by
     _log_event(invoice, "entered_in_munis", f"Marked entered by {entered_by}")
     db.session.commit()
+
+
+def revert_status(invoice: Invoice):
+    """General "I clicked the wrong thing" escape hatch — steps an invoice
+    back one stage in received -> needs_assignment -> pending_pm_approval
+    -> approved -> entered_in_munis, undoing whatever that stage's forward
+    transition set. Coding lines are never touched, only the status-
+    specific fields (approval, Munis entry, PM/Administrator routing)."""
+    if invoice.status == "entered_in_munis":
+        invoice.status = "approved"
+        invoice.munis_entered_at = None
+        invoice.munis_entered_by = None
+        _log_event(invoice, "status_reverted", "Reverted from Entered in Munis to Approved")
+        db.session.commit()
+    elif invoice.status == "approved":
+        unapprove_invoice(invoice, note="Reverted from Approved")
+    elif invoice.status == "pending_pm_approval":
+        invoice.pm_id = None
+        invoice.administrator_id = None
+        invoice.status = "needs_assignment"
+        _log_event(invoice, "status_reverted", "Reverted from Pending PM Approval to Needs Assignment")
+        db.session.commit()
+    # "needs_assignment" and "received" have no earlier stage to revert to.
 
 
 def send_pm_reminder(invoice: Invoice):
